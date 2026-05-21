@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stax Bot — Install</title>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #0d1117; color: #e6edf3; margin: 0; padding: 20px; }
+  h1 { color: #00ff88; font-size: 22px; margin-bottom: 4px; }
+  p { color: #8b949e; font-size: 15px; line-height: 1.5; }
+  .step { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 16px; margin: 12px 0; }
+  .step strong { color: #58a6ff; }
+  a.bookmarklet {
+    display: block; background: #238636; color: #fff; text-align: center;
+    padding: 16px; border-radius: 10px; font-size: 17px; font-weight: bold;
+    text-decoration: none; margin: 20px 0; letter-spacing: .5px;
+  }
+  code { background: #21262d; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #79c0ff; }
+  .note { color: #f0883e; font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Build Your Stax Bot</h1>
+<p>Automatically buys and sells at the right times. Works in any mobile browser.</p>
+
+<a class="bookmarklet" href="javascript:(function()%7Bif(window._staxBot)%7BclearInterval(window._staxBot)%3Bwindow._staxBot%3Dnull%3Bvar%20bar%3Ddocument.getElementById('_stax_bar')%3Bif(bar)bar.remove()%3Breturn%7Dvar%20bar%3Ddocument.createElement('div')%3Bbar.id%3D'_stax_bar'%3Bbar.style.cssText%3D'position%3Afixed%3Btop%3A0%3Bleft%3A0%3Bright%3A0%3Bz-index%3A999999%3Bbackground%3A%231a1a2e%3Bcolor%3A%2300ff88%3Bfont%3Abold%2013px%20monospace%3Bpadding%3A6px%2012px%3Bdisplay%3Aflex%3Bjustify-content%3Aspace-between%3Balign-items%3Acenter%3Bbox-shadow%3A0%202px%208px%20rgba(0%2C0%2C0%2C.5)'%3Bbar.innerHTML%3D'%3Cspan%20id%3D%22_stax_status%22%3EBOT%20STARTING...%3C%2Fspan%3E%3Cbutton%20id%3D%22_stax_stop%22%20style%3D%22background%3A%23ff4466%3Bcolor%3A%23fff%3Bborder%3Anone%3Bborder-radius%3A4px%3Bpadding%3A2px%208px%3Bcursor%3Apointer%3Bfont-size%3A12px%22%3ESTOP%3C%2Fbutton%3E'%3Bdocument.body.prepend(bar)%3Bdocument.getElementById('_stax_stop').onclick%3Dfunction()%7BclearInterval(window._staxBot)%3Bwindow._staxBot%3Dnull%3Bbar.remove()%7D%3Bfunction%20setStatus(msg)%7Bvar%20el%3Ddocument.getElementById('_stax_status')%3Bif(el)el.textContent%3Dmsg%7Dfunction%20%24%24(sel)%7Breturn%20Array.from(document.querySelectorAll(sel))%7Dfunction%20parseMoney(txt)%7Bvar%20c%3D(txt%7C%7C'').replace(%2F%5B%5E%5Cd.%5D%2Fg%2C'')%3Breturn%20parseFloat(c)%7C%7C0%7Dfunction%20textNodes()%7Bvar%20walker%3Ddocument.createTreeWalker(document.body%2CNodeFilter.SHOW_TEXT)%3Bvar%20nodes%3D%5B%5D%2Cn%3Bwhile((n%3Dwalker.nextNode()))%7Bvar%20t%3Dn.textContent.trim()%3Bif(t)nodes.push(%7Bnode%3An%2Ctext%3At%7D)%7Dreturn%20nodes%7Dfunction%20readYear()%7Bvar%20nodes%3DtextNodes()%3Bfor(var%20i%3D0%3Bi%3Cnodes.length%3Bi%2B%2B)%7Bvar%20m%3Dnodes%5Bi%5D.text.match(%2FYear%5Cs%2B(%5Cd%2B)%5Cs%2Bof%5Cs%2B20%2Fi)%3Bif(m)return%20parseInt(m%5B1%5D)%7Dreturn%200%7Dfunction%20readCash()%7Bvar%20nodes%3DtextNodes()%3Bfor(var%20i%3D0%3Bi%3Cnodes.length%3Bi%2B%2B)%7Bif(%2Fpocket%5Cs*cash%2Fi.test(nodes%5Bi%5D.text))%7Bfor(var%20j%3Di%2B1%3Bj%3CMath.min(i%2B5%2Cnodes.length)%3Bj%2B%2B)%7Bif(%2F%5C%24%5B%5Cd%2C%5D%2F.test(nodes%5Bj%5D.text))return%20parseMoney(nodes%5Bj%5D.text)%7Dvar%20parent%3Dnodes%5Bi%5D.node.parentElement%3Bif(parent)%7Bvar%20m%3Dparent.closest('*').textContent.match(%2F%5C%24(%5B%5Cd%2C%5D%2B)%2F)%3Bif(m)return%20parseMoney(m%5B0%5D)%7D%7D%7Dreturn%200%7Dfunction%20isGameOver()%7Breturn%2Fgame%5Cs*over%7Cfinal%5Cs*(score%7Cresult)%7Ccongratulations%2Fi.test(document.body.textContent)%7Dfunction%20readAssets()%7Bvar%20assets%3D%5B%5D%3Bvar%20buttons%3D%24%24('button')%3Bbuttons.forEach(function(btn)%7Bif(!%2Fbuy%2Fi.test(btn.textContent))return%3Bvar%20card%3Dbtn.closest('%5Bclass%5D')%7C%7Cbtn.parentElement%3Bif(!card)return%3Bvar%20txt%3Dcard.textContent%3Bvar%20priceMatch%3Dtxt.match(%2F%5C%24(%5B%5Cd%2C%5D%2B%5C.%3F%5Cd*)%2F)%3Bif(!priceMatch)return%3Bvar%20price%3DparseMoney(priceMatch%5B0%5D)%3Bif(price%3C%3D0)return%3Bvar%20name%3D''%3Bvar%20walker%3Ddocument.createTreeWalker(card%2CNodeFilter.SHOW_TEXT)%3Bvar%20n%3Bwhile((n%3Dwalker.nextNode()))%7Bvar%20t%3Dn.textContent.trim()%3Bif(t%26%26t.length%3E1%26%26t.length%3C40%26%26!%2F%5E%5C%24%7C%5E%5Cd%7Cbuy%7Csell%7Cown%7Cprice%2Fi.test(t))%7Bname%3Dt%3Bbreak%7D%7Dif(!name)name%3D'asset_'%2Bassets.length%3Bvar%20ownedMatch%3Dtxt.match(%2F(%3F%3Aown(%3F%3Aed)%3F%7Cqty%7Cx)%5Cs*%5B%3A%5Cs%5D%3F%5Cs*(%5Cd%2B)%2Fi)%3Bvar%20owned%3DownedMatch%3FparseInt(ownedMatch%5B1%5D)%3A0%3Bassets.push(%7Bname%3Aname%2Cprice%3Aprice%2Cowned%3Aowned%2CbuyBtn%3Abtn%2Ccard%3Acard%7D)%7D)%3Breturn%20assets%7Dvar%20priceHistory%3D%7B%7D%3Bvar%20buyPrices%3D%7B%7D%3Bvar%20lastYear%3D-1%3Bvar%20CASH_BUFFER%3D2500%3Bfunction%20recordPrices(assets)%7Bassets.forEach(function(a)%7Bif(!priceHistory%5Ba.name%5D)priceHistory%5Ba.name%5D%3D%5B%5D%3BpriceHistory%5Ba.name%5D.push(a.price)%7D)%7Dfunction%20momentum(name)%7Bvar%20h%3DpriceHistory%5Bname%5D%7C%7C%5B%5D%3Bif(h.length%3C3)return%200%3Bvar%20base%3Dh%5Bh.length-3%5D%3Breturn%20base%3F(h%5Bh.length-1%5D-base)%2Fbase%3A0%7Dfunction%20decide(assets%2Ccash)%7Bvar%20actions%3D%5B%5D%3Bvar%20spendable%3Dcash-CASH_BUFFER%3Bassets.forEach(function(a)%7Bif(a.owned%3C%3D0)return%3Bvar%20bp%3DbuyPrices%5Ba.name%5D%3Bif(!bp)return%3Bvar%20gain%3D(a.price-bp)%2Fbp%3Bif(gain%3E%3D0.25%7C%7Cgain%3C%3D-0.15)%7Bactions.push(%7Btype%3A'sell'%2Casset%3Aa%7D)%3Bdelete%20buyPrices%5Ba.name%5D%7D%7D)%3Bif(spendable%3C%3D0)return%20actions%3Bvar%20candidates%3Dassets.slice().sort(function(a%2Cb)%7Breturn%20momentum(b.name)-momentum(a.name)%7D)%3Bfor(var%20i%3D0%3Bi%3Ccandidates.length%3Bi%2B%2B)%7Bvar%20a%3Dcandidates%5Bi%5D%3Bif(a.price%3C%3D0%7C%7Cspendable%3Ca.price)continue%3Bvar%20mom%3Dmomentum(a.name)%3Bvar%20h%3DpriceHistory%5Ba.name%5D%7C%7C%5B%5D%3Bif(h.length%3C2)continue%3Bif(mom%3E0.03%7C%7Cmom%3C-0.10)%7Bvar%20qty%3DMath.max(1%2CMath.floor(spendable*0.6%2Fa.price))%3Bqty%3DMath.min(qty%2CMath.floor(spendable%2Fa.price))%3Bif(qty%3E%3D1)%7Bactions.push(%7Btype%3A'buy'%2Casset%3Aa%2Cqty%3Aqty%7D)%3BbuyPrices%5Ba.name%5D%3Da.price%3Bbreak%7D%7D%7Dreturn%20actions%7Dfunction%20clickBuy(asset%2Cqty)%7Basset.buyBtn.click()%3BsetTimeout(function()%7Bvar%20input%3Ddocument.querySelector('input%5Btype%3D%22number%22%5D%2Cinput%5Bplaceholder*%3D%22uantit%22%5D%2Cinput%5Bplaceholder*%3D%22mount%22%5D')%3Bif(input)%7Binput.value%3Dqty%3Binput.dispatchEvent(new%20Event('input'%2C%7Bbubbles%3Atrue%7D))%3Binput.dispatchEvent(new%20Event('change'%2C%7Bbubbles%3Atrue%7D))%3BsetTimeout(function()%7Bvar%20confirm%3DArray.from(document.querySelectorAll('button')).find(function(b)%7Breturn%2Fconfirm%7Cbuy%7Cok%7Csubmit%2Fi.test(b.textContent)%7D)%3Bif(confirm)confirm.click()%7D%2C300)%7D%7D%2C400)%7Dfunction%20clickSell(asset)%7Bvar%20sellBtn%3DArray.from(asset.card.querySelectorAll('button')).find(function(b)%7Breturn%2Fsell%2Fi.test(b.textContent)%7D)%3Bif(!sellBtn)return%3BsellBtn.click()%3BsetTimeout(function()%7Bvar%20input%3Ddocument.querySelector('input%5Btype%3D%22number%22%5D')%3Bif(input)%7Binput.value%3Dasset.owned%3Binput.dispatchEvent(new%20Event('input'%2C%7Bbubbles%3Atrue%7D))%3BsetTimeout(function()%7Bvar%20confirm%3DArray.from(document.querySelectorAll('button')).find(function(b)%7Breturn%2Fconfirm%7Csell%7Cok%2Fi.test(b.textContent)%7D)%3Bif(confirm)confirm.click()%7D%2C300)%7D%7D%2C400)%7Dwindow._staxBot%3DsetInterval(function()%7Bif(isGameOver())%7BclearInterval(window._staxBot)%3BsetStatus('GAME%20OVER%20%E2%80%94%20bot%20stopped')%3Breturn%7Dvar%20year%3DreadYear()%3Bvar%20cash%3DreadCash()%3Bvar%20assets%3DreadAssets()%3BsetStatus('Yr%20'%2Byear%2B'%2F20%20%20Cash%3A%20%24'%2Bcash.toLocaleString()%2B'%20%20Assets%3A%20'%2Bassets.length)%3Bif(year%3C%3D0)return%3BrecordPrices(assets)%3Bif(year!%3DlastYear%26%26year%3E0)%7BlastYear%3Dyear%3Bvar%20actions%3Ddecide(assets%2Ccash)%3Bactions.forEach(function(action)%7Bif(action.type%3D%3D%3D'buy')%7BsetStatus('BUY%20'%2Baction.qty%2B'x%20'%2Baction.asset.name)%3BclickBuy(action.asset%2Caction.qty)%7Delse%7BsetStatus('SELL%20'%2Baction.asset.owned%2B'x%20'%2Baction.asset.name)%3BclickSell(action.asset)%7D%7D)%7D%7D%2C5000)%3BsetStatus('BOT%20ACTIVE%20%E2%80%94%20Yr%200%2F20')%7D)()%3B">
+  TAP HERE TO SAVE AS BOOKMARK
+</a>
+
+<p class="note">⚠️ On iPhone/Safari: You can't drag this link to bookmarks. Follow the steps below instead.</p>
+
+<div class="step">
+  <strong>Step 1 — iPhone / Safari</strong>
+  <ol>
+    <li>Tap <strong>Share</strong> (box with arrow) → <strong>Add Bookmark</strong> → Save it as <code>Stax Bot</code></li>
+    <li>Then go back, open <strong>Bookmarks</strong>, find <em>Stax Bot</em>, tap <strong>Edit</strong></li>
+    <li>Delete the URL that's there and paste the code from the button above instead</li>
+  </ol>
+</div>
+
+<div class="step">
+  <strong>Step 1 — Android / Chrome</strong>
+  <ol>
+    <li>Long-press the green button above → <strong>Copy link address</strong></li>
+    <li>Open Chrome menu → <strong>Bookmarks</strong> → <strong>Add bookmark</strong></li>
+    <li>Name it <code>Stax Bot</code> and paste the copied link as the URL</li>
+  </ol>
+</div>
+
+<div class="step">
+  <strong>Step 2 — Use it</strong>
+  <ol>
+    <li>Go to <a href="https://buildyourstax.com" style="color:#58a6ff">buildyourstax.com</a> and start a game</li>
+    <li>Open your bookmarks and tap <strong>Stax Bot</strong></li>
+    <li>A green bar appears at the top — the bot is running</li>
+    <li>Tap <strong>STOP</strong> in the bar any time to pause it</li>
+    <li>Tap the bookmark again while it's running to stop it</li>
+  </ol>
+</div>
+
+<div class="step">
+  <strong>Desktop (Chrome / Firefox / Edge)</strong>
+  <p>Drag the green button above to your bookmarks bar. Then go to the game and click it.</p>
+</div>
+
+</body>
+</html>
