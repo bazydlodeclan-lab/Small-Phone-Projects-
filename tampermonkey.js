@@ -1,40 +1,43 @@
 // ==UserScript==
 // @name         Build Your Stax Bot
 // @namespace    https://github.com/bazydlodeclan-lab/Small-Phone-Projects-
-// @version      2.0
-// @description  Intercepts the game API and auto-trades every tick — all-in on best asset
+// @version      5.0
+// @description  Auto-trades in Build Your Stax — all-in on best asset
 // @match        https://buildyourstax.com/*
 // @match        https://www.buildyourstax.com/*
 // @grant        none
-// @run-at       document-start
+// @run-at       document-idle
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  // ── Shared state ────────────────────────────────────────────────────────────
-  var gameCode = null;
-  var gameState = null;        // last known state from API
-  var priceHistory = {};       // assetId -> [price, ...]
-  var actedOnYear = -1;
+  var priceHistory = {};
+  var lastActedYear  = -1;
+  var lastActedCash  = -1;
   var acting = false;
+  var stopped = false;
 
-  // ── Status bar (injected after DOM is ready) ─────────────────────────────
+  // ── Inject floating status bar ────────────────────────────────────────────
   function injectBar() {
     if (document.getElementById('_stax_bar')) return;
     var bar = document.createElement('div');
     bar.id = '_stax_bar';
     bar.style.cssText = [
-      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:2147483647',
-      'background:#1a1a2e', 'color:#00ff88', 'font:bold 13px monospace',
-      'padding:6px 12px', 'display:flex', 'justify-content:space-between',
-      'align-items:center', 'box-shadow:0 2px 8px rgba(0,0,0,.6)'
+      'position:fixed','top:0','left:0','right:0','z-index:2147483647',
+      'background:#1a1a2e','color:#00ff88','font:bold 12px monospace',
+      'padding:5px 10px','display:flex','justify-content:space-between',
+      'align-items:center','box-shadow:0 2px 8px rgba(0,0,0,.9)'
     ].join(';');
-    bar.innerHTML = '<span id="_stax_msg">BOT WAITING — start a solo game</span>'
-      + '<button id="_stax_stop" style="background:#ff4466;color:#fff;border:none;'
-      + 'border-radius:4px;padding:4px 10px;cursor:pointer;font:bold 12px monospace">STOP</button>';
+    bar.innerHTML =
+      '<span id="_stax_msg">BOT ON — scanning page...</span>' +
+      '<button id="_stax_stop" style="background:#ff4466;color:#fff;border:none;' +
+      'border-radius:4px;padding:3px 8px;cursor:pointer;font:bold 11px monospace">STOP</button>';
     document.body.appendChild(bar);
-    document.getElementById('_stax_stop').onclick = function () { bar.remove(); };
+    document.getElementById('_stax_stop').onclick = function () {
+      stopped = true;
+      document.getElementById('_stax_msg').textContent = 'Bot stopped.';
+    };
   }
 
   function setStatus(msg) {
@@ -42,140 +45,94 @@
     if (el) el.textContent = msg;
   }
 
-  // Inject bar as soon as body exists
-  if (document.body) {
-    injectBar();
-  } else {
-    document.addEventListener('DOMContentLoaded', injectBar);
+  // ── Parse money string ────────────────────────────────────────────────────
+  function parseMoney(str) {
+    return parseFloat((str || '').replace(/[^\d.]/g, '')) || 0;
   }
 
-  // ── Intercept fetch ──────────────────────────────────────────────────────
-  var _fetch = window.fetch;
-  window.fetch = function () {
-    var args = Array.prototype.slice.call(arguments);
-    var url = String(args[0] && args[0].url ? args[0].url : args[0]);
-
-    return _fetch.apply(window, args).then(function (response) {
-      if (url.indexOf('/wp-json/dev-api/v1/') !== -1) {
-        response.clone().json().then(function (data) {
-          handleApiResponse(url, data);
-        }).catch(function () {});
-      }
-      return response;
-    });
-  };
-
-  // Also intercept XMLHttpRequest in case the game uses it
-  var _xhrOpen = XMLHttpRequest.prototype.open;
-  var _xhrSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open = function (method, url) {
-    this._url = url;
-    return _xhrOpen.apply(this, arguments);
-  };
-  XMLHttpRequest.prototype.send = function () {
-    var xhr = this;
-    xhr.addEventListener('load', function () {
-      if (xhr._url && xhr._url.indexOf('/wp-json/dev-api/v1/') !== -1) {
-        try {
-          var data = JSON.parse(xhr.responseText);
-          handleApiResponse(xhr._url, data);
-        } catch (e) {}
-      }
-    });
-    return _xhrSend.apply(this, arguments);
-  };
-
-  // ── Handle API responses ─────────────────────────────────────────────────
-  function handleApiResponse(url, data) {
-    // Capture game code from create-game
-    if (url.indexOf('create-game') !== -1 || url.indexOf('new-game') !== -1) {
-      var code = data.game_code || data.code || data.gameCode;
-      if (code) {
-        gameCode = code;
-        setStatus('Game created — waiting for Year 1...');
-      }
-    }
-
-    // Capture live state from get-game or any tick response
-    if (url.indexOf('get-game') !== -1 || url.indexOf('game-state') !== -1
-        || url.indexOf('tick') !== -1 || url.indexOf('game_tick') !== -1) {
-      parseAndAct(data);
-      return;
-    }
-
-    // Some games return state on every API call — try parsing regardless
-    if (data && (data.tick !== undefined || data.year !== undefined
-        || data.pocket_cash !== undefined || data.current_year !== undefined)) {
-      parseAndAct(data);
-    }
+  function isVisible(el) {
+    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
   }
 
-  // ── Parse API data into a clean state object ─────────────────────────────
-  function parseAndAct(raw) {
-    // Year — try every key name we've seen in the wild
-    var year = raw.year || raw.current_year || raw.tick
-             || raw.current_tick || raw.game_year || 0;
-    // Some APIs express year as tick number (120 ticks = 20 years → year = tick/6)
-    if (year > 20) year = Math.ceil(year / 6);
-    year = parseInt(year) || 0;
+  // ── Find all trade buttons (very broad search) ────────────────────────────
+  // Matches "Buy", "Invest", "Purchase", "+", "Add"
+  var BUY_RE  = /^\s*(buy|invest|purchase|\+|add)\s*$/i;
+  var SELL_RE = /^\s*(sell|remove|withdraw|-)\s*$/i;
 
-    // Cash
-    var cash = 0;
-    if (raw.pocket_cash !== undefined)       cash = parseFloat(raw.pocket_cash);
-    else if (raw.cash !== undefined)         cash = parseFloat(raw.cash);
-    else if (raw.portfolio && raw.portfolio.cash !== undefined) cash = parseFloat(raw.portfolio.cash);
-    else if (raw.balance !== undefined)      cash = parseFloat(raw.balance);
-
-    // Assets — try multiple shapes
-    var rawAssets = raw.assets || raw.investments || raw.portfolio_assets
-                  || (raw.portfolio && raw.portfolio.assets) || [];
-    if (!Array.isArray(rawAssets)) {
-      // Sometimes it's an object keyed by id
-      rawAssets = Object.values(rawAssets);
-    }
-
-    var assets = rawAssets.map(function (a) {
-      return {
-        id:    a.id || a.investment_id || a.asset_id || String(a.name || ''),
-        name:  a.name || a.title || a.label || String(a.id || ''),
-        price: parseFloat(a.price || a.current_price || a.value || 0),
-        owned: parseInt(a.owned || a.quantity || a.shares || a.amount || 0),
-      };
-    }).filter(function (a) { return a.price > 0; });
-
-    // Only proceed if we got meaningful data
-    if (year <= 0 && assets.length === 0) return;
-
-    gameState = { year: year, cash: cash, assets: assets };
-
-    // Update status bar
-    setStatus('Yr ' + year + '/20  $' + Math.round(cash).toLocaleString()
-      + '  ' + assets.length + ' assets');
-
-    // Record price history
-    assets.forEach(function (a) {
-      if (!priceHistory[a.id]) priceHistory[a.id] = [];
-      var h = priceHistory[a.id];
-      if (!h.length || h[h.length - 1] !== a.price) h.push(a.price);
-    });
-
-    // Is the game actually over? Only if year is at the end.
-    if (year >= 20 && /game\s*over|final|congratulations/i.test(document.body.textContent)) {
-      setStatus('GAME OVER — check your final score!');
-      return;
-    }
-
-    // Act once per year (or when new cash arrives)
-    var gotNewCash = gameState && cash > (gameState.cash || 0) + 500;
-    if ((year !== actedOnYear || gotNewCash) && cash > 0 && assets.length > 0) {
-      actedOnYear = year;
-      allIn(assets, cash);
-    }
+  function findBuyButtons() {
+    return Array.from(document.querySelectorAll('button, [role="button"], a.btn, .button'))
+      .filter(function (el) {
+        return BUY_RE.test(el.textContent.trim()) && isVisible(el);
+      });
   }
 
-  // ── Strategy: all-in on best asset ───────────────────────────────────────
-  function momentum(id) {
-    var h = priceHistory[id] || [];
+  // ── Read rendered text of a card and extract price + name ────────────────
+  function cardInfo(buyBtn) {
+    // Walk up through ancestors looking for a container with a price
+    var el = buyBtn;
+    for (var i = 0; i < 8; i++) {
+      if (!el.parentElement) break;
+      el = el.parentElement;
+      var text = el.innerText || '';
+      var priceMatch = text.match(/\$([\d,]+\.?\d*)/);
+      if (!priceMatch) continue;
+      var price = parseMoney(priceMatch[0]);
+      if (price <= 0) continue;
+
+      // Name = first meaningful line
+      var name = '';
+      var lines = text.split('\n').map(function (l) { return l.trim(); });
+      for (var j = 0; j < lines.length; j++) {
+        var l = lines[j];
+        if (l && l.length > 1 && l.length < 60
+            && !/^\$|^\d|^buy$|^sell$|^invest$|^purchase$/i.test(l)) {
+          name = l;
+          break;
+        }
+      }
+      if (!name) name = 'Asset_' + price;
+
+      // Owned shares
+      var ownedMatch = text.match(/(?:own(?:ed)?|shares?|qty|quantity|units?|x)\s*[:\s]?\s*(\d+)/i)
+                    || text.match(/(\d+)\s+(?:share|unit|held)/i);
+      var owned = ownedMatch ? parseInt(ownedMatch[1]) : 0;
+
+      // Sell button in same container
+      var sellBtn = Array.from(el.querySelectorAll('button, [role="button"]')).find(function (b) {
+        return SELL_RE.test(b.textContent.trim()) && isVisible(b);
+      });
+
+      return { name: name, price: price, owned: owned, buyBtn: buyBtn, sellBtn: sellBtn, card: el };
+    }
+    return null;
+  }
+
+  // ── Read year from visible page text ─────────────────────────────────────
+  function readYear() {
+    var t = document.body.innerText || '';
+    var m = t.match(/year\s+(\d+)\s+of\s+20/i)
+          || t.match(/\b(\d{1,2})\s*\/\s*20\b/)
+          || t.match(/year[:\s]+(\d+)/i)
+          || t.match(/round[:\s]+(\d+)/i)
+          || t.match(/period[:\s]+(\d+)/i);
+    return m ? parseInt(m[1]) : 0;
+  }
+
+  // ── Read pocket cash ──────────────────────────────────────────────────────
+  function readCash() {
+    var t = document.body.innerText || '';
+    // Look for cash labelled near a dollar amount
+    var m = t.match(/(?:pocket|cash|balance|available|funds?)[^\n$]{0,40}\$([\d,]+)/i)
+          || t.match(/\$([\d,]+)[^\n$]{0,40}(?:pocket|cash|balance|available)/i);
+    if (m) return parseMoney(m[1]);
+    // Fallback: smallest dollar amount on page (pocket cash < net worth)
+    var amounts = (t.match(/\$[\d,]+/g) || []).map(parseMoney).filter(function (n) { return n > 0 && n < 100000; });
+    return amounts.length ? Math.min.apply(null, amounts) : 0;
+  }
+
+  // ── Pick best asset by price momentum ────────────────────────────────────
+  function momentum(name) {
+    var h = priceHistory[name] || [];
     if (h.length < 2) return 0;
     var base = h[Math.max(0, h.length - 3)];
     return base ? (h[h.length - 1] - base) / base : 0;
@@ -183,102 +140,145 @@
 
   function bestAsset(assets) {
     return assets.slice().sort(function (a, b) {
-      var ha = priceHistory[a.id] || [], hb = priceHistory[b.id] || [];
-      var sA = momentum(a.id) + (ha.length >= 2 ? 0.01 : -0.5);
-      var sB = momentum(b.id) + (hb.length >= 2 ? 0.01 : -0.5);
+      var ha = (priceHistory[a.name] || []).length;
+      var hb = (priceHistory[b.name] || []).length;
+      var sA = momentum(a.name) + (ha >= 2 ? 0.05 : -0.5);
+      var sB = momentum(b.name) + (hb >= 2 ? 0.05 : -0.5);
       return sB - sA;
     })[0];
   }
 
+  // ── Execute a buy or sell click ────────────────────────────────────────────
+  function clickAndFill(btn, qty, cb) {
+    if (!btn) { if (cb) setTimeout(cb, 200); return; }
+    btn.click();
+    setTimeout(function () {
+      // Handle quantity input dialog
+      var input = document.querySelector('input[type="number"]')
+               || document.querySelector('input[placeholder*="uantit"]')
+               || document.querySelector('input[placeholder*="ow many"]')
+               || document.querySelector('input[placeholder*="mount"]');
+      if (input) {
+        input.value = qty;
+        input.dispatchEvent(new Event('input',  { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        setTimeout(function () {
+          var confirmBtn = Array.from(document.querySelectorAll('button')).find(function (b) {
+            return /confirm|submit|ok|yes|done|buy|invest/i.test(b.textContent) && isVisible(b);
+          });
+          if (confirmBtn) confirmBtn.click();
+          setTimeout(cb || function () {}, 500);
+        }, 300);
+      } else {
+        setTimeout(cb || function () {}, 500);
+      }
+    }, 450);
+  }
+
+  // ── All-in: sell losers, buy winner ──────────────────────────────────────
   function allIn(assets, cash) {
     if (acting) return;
     acting = true;
-
     var best = bestAsset(assets);
     if (!best) { acting = false; return; }
 
     var toSell = assets.filter(function (a) {
-      return a.owned > 0 && a.id !== best.id;
+      return a.owned > 0 && a.name !== best.name && a.sellBtn;
     });
 
     function doSells(i) {
       if (i >= toSell.length) {
-        var qty = Math.floor(cash / best.price);
-        if (qty >= 1) {
-          setStatus('BUY ' + qty + 'x ' + best.name + ' @$' + best.price);
-          clickTrade('buy', best.name, qty, function () { acting = false; });
-        } else {
+        var qty = (cash > 0 && best.price > 0) ? Math.max(1, Math.floor(cash / best.price)) : 1;
+        setStatus('BUY ' + qty + 'x ' + best.name);
+        clickAndFill(best.buyBtn, qty, function () {
+          lastActedCash = cash;
           acting = false;
-        }
+        });
         return;
       }
-      var a = toSell[i];
-      setStatus('SELL ' + a.owned + 'x ' + a.name);
-      clickTrade('sell', a.name, a.owned, function () { doSells(i + 1); });
+      setStatus('SELL ' + toSell[i].name);
+      clickAndFill(toSell[i].sellBtn, toSell[i].owned, function () { doSells(i + 1); });
     }
-
     doSells(0);
   }
 
-  // ── DOM click helpers ─────────────────────────────────────────────────────
-  function clickTrade(type, assetName, qty, cb) {
-    // Find the button: look for a button with buy/sell text near the asset name
-    var allBtns = Array.from(document.querySelectorAll('button'));
-    var btn = null;
+  // ── Main loop ─────────────────────────────────────────────────────────────
+  function tick() {
+    if (stopped) return;
 
-    // Strategy 1: find a button whose nearest ancestor also contains the asset name
-    for (var i = 0; i < allBtns.length; i++) {
-      var b = allBtns[i];
-      if (!new RegExp(type, 'i').test(b.textContent)) continue;
-      var parent = b.closest('[class]') || b.parentElement;
-      if (parent && parent.textContent.toLowerCase().indexOf(assetName.toLowerCase()) !== -1) {
-        btn = b;
-        break;
-      }
-    }
+    var buyBtns = findBuyButtons();
 
-    // Strategy 2: just find the first buy/sell button visible on screen
-    if (!btn) {
-      btn = allBtns.find(function (b) {
-        return new RegExp('^\\s*' + type + '\\s*$', 'i').test(b.textContent.trim());
-      });
-    }
-
-    if (!btn) {
-      console.warn('[StaxBot] Could not find', type, 'button for', assetName);
-      if (cb) setTimeout(cb, 200);
+    // No buy buttons — game hasn't started or is loading
+    if (buyBtns.length === 0) {
+      // Show how many buttons total so user knows script is alive
+      var allBtns = document.querySelectorAll('button').length;
+      setStatus('BOT ON — ' + allBtns + ' buttons on page, none are Buy yet. Start the game.');
       return;
     }
 
-    btn.click();
+    // Build asset list
+    var assets = [];
+    var seenCards = new Set();
+    buyBtns.forEach(function (btn) {
+      var info = cardInfo(btn);
+      if (!info || seenCards.has(info.card)) return;
+      seenCards.add(info.card);
+      assets.push(info);
+    });
 
-    // Handle quantity input modal if it appears
-    setTimeout(function () {
-      var input = document.querySelector(
-        'input[type="number"], input[placeholder*="uantit"], input[placeholder*="mount"], input[placeholder*="ow many"]'
-      );
-      if (input) {
-        input.value = qty;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        setTimeout(function () {
-          // Click confirm/submit button in the modal
-          var confirmBtn = Array.from(document.querySelectorAll('button')).find(function (b) {
-            return /confirm|ok|submit|yes|done/i.test(b.textContent);
-          });
-          // Or if the same buy/sell button is now a confirm, click it again
-          if (!confirmBtn) {
-            confirmBtn = Array.from(document.querySelectorAll('button')).find(function (b) {
-              return new RegExp(type, 'i').test(b.textContent);
-            });
-          }
-          if (confirmBtn) confirmBtn.click();
-          setTimeout(cb || function () {}, 400);
-        }, 300);
-      } else {
-        setTimeout(cb || function () {}, 400);
-      }
-    }, 400);
+    if (assets.length === 0) {
+      setStatus('BOT ON — found Buy buttons but could not read prices. Game loading?');
+      return;
+    }
+
+    // Record prices for momentum calc
+    assets.forEach(function (a) {
+      if (!priceHistory[a.name]) priceHistory[a.name] = [];
+      var h = priceHistory[a.name];
+      if (!h.length || h[h.length - 1] !== a.price) h.push(a.price);
+    });
+
+    var year = readYear();
+    var cash = readCash();
+
+    // Game over — year 20 reached
+    if (year >= 20) {
+      setStatus('GAME OVER — check your final score!');
+      return;
+    }
+
+    setStatus('Yr ' + (year || '?') + '/20  $' + Math.round(cash).toLocaleString()
+      + '  ' + assets.length + ' assets  mom:' + momentum(bestAsset(assets).name).toFixed(2));
+
+    var newYear = year > 0 && year !== lastActedYear;
+    var newCash = cash > lastActedCash + 200;
+
+    if ((newYear || newCash) && !acting) {
+      if (newYear) lastActedYear = year;
+      allIn(assets, cash);
+    }
+  }
+
+  // Wait for page to render, then poll every 2 seconds
+  // Also re-scan whenever DOM changes significantly (React re-renders)
+  function start() {
+    injectBar();
+    setInterval(tick, 2000);
+
+    // MutationObserver fires an extra tick when React renders new content
+    var observer = new MutationObserver(function (mutations) {
+      var meaningful = mutations.some(function (m) {
+        return m.addedNodes.length > 0;
+      });
+      if (meaningful && !acting && !stopped) tick();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(start, 1500);
+  } else {
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(start, 1500); });
   }
 
 })();
