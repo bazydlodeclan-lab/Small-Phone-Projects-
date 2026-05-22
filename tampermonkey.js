@@ -28,7 +28,8 @@
 
   function findBuyButtons() {
     return Array.from(document.querySelectorAll('button')).filter(function (b) {
-      return /^buy$/i.test(b.textContent.trim()) && isVisible(b);
+      var txt = b.textContent.trim();
+      return /^(buy|invest|purchase|deposit|open account|add funds?)$/i.test(txt) && isVisible(b);
     });
   }
 
@@ -54,7 +55,7 @@
       var om = text.match(/(?:own(?:ed)?|shares?|qty|x)\s*:?\s*(\d+)/i);
       var owned = om ? parseInt(om[1]) : 0;
       var sellBtn = Array.from(el.querySelectorAll('button')).find(function (b) {
-        return /^sell$/i.test(b.textContent.trim()) && isVisible(b);
+        return /^(sell|withdraw|remove|close|redeem)$/i.test(b.textContent.trim()) && isVisible(b);
       });
       return { name: name, price: price, owned: owned, buyBtn: buyBtn, sellBtn: sellBtn };
     }
@@ -197,11 +198,11 @@
     setStatus('Yr ' + (year || '?') + '/20  $' + Math.round(cash).toLocaleString()
       + '  ' + assets.length + ' assets  mom:' + (best ? momentum(best.name).toFixed(2) : '0'));
 
-    var newYear = year > 0 && year !== lastActedYear;
+    var newYear = year !== lastActedYear; // act even if year reads as 0 (start of game)
     var newCash = cash > lastActedCash + 200;
 
     if ((newYear || newCash) && !acting) {
-      if (newYear) lastActedYear = year;
+      lastActedYear = year;
       allIn(assets, cash);
     }
   }, 3000);
