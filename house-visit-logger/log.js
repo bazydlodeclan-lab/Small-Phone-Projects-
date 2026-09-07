@@ -1,4 +1,5 @@
 const GEMINI_MODEL = 'gemini-flash-latest';
+const GEMINI_API_KEY = "AIzaSyDuNPAPKvG9sWcCFYjLuUX49lc_AZ_fg1A";
 
 const els = {
   captureBtn: document.getElementById('captureBtn'),
@@ -10,21 +11,12 @@ const els = {
   amountField: document.getElementById('amountField'),
   saveBtn: document.getElementById('saveBtn'),
   retakeBtn: document.getElementById('retakeBtn'),
-  settingsBtn: document.getElementById('settingsBtn'),
   newVisitSection: document.getElementById('newVisitSection'),
   detailsSection: document.getElementById('detailsSection'),
 };
 
 let currentPhotoBlob = null;
 let selectedOutcome = null;
-
-els.settingsBtn.addEventListener('click', () => {
-  const existing = localStorage.getItem('gemini_api_key') || '';
-  const key = window.prompt('Enter your free Gemini API key (get one at aistudio.google.com/apikey):', existing);
-  if (key !== null) {
-    localStorage.setItem('gemini_api_key', key.trim());
-  }
-});
 
 els.captureBtn.addEventListener('click', () => els.fileInput.click());
 
@@ -53,15 +45,10 @@ els.fileInput.addEventListener('change', async () => {
 });
 
 async function detectHouseNumber(file) {
-  const apiKey = localStorage.getItem('gemini_api_key');
-  if (!apiKey) {
-    els.status.textContent = 'No Gemini API key set (tap ⚙️) — enter address manually';
-    return '';
-  }
   try {
     const base64 = await fileToBase64(file);
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
