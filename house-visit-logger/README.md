@@ -31,15 +31,17 @@ server and no account.
   There is no backup/export built in. If you need that later, ask and it
   can be added.
 
+## API key
+
+A Gemini API key is already hardcoded into `log.js` (as the
+`GEMINI_API_KEY` constant) — there's nothing to enter in the app itself.
+If that key ever stops working (quota, revoked, etc.), get a new free one
+at **aistudio.google.com/apikey** and replace the value of
+`GEMINI_API_KEY` at the top of `log.js`.
+
 ## One-time setup
 
-### 1. Get a free Gemini API key
-1. Go to **aistudio.google.com/apikey** on your phone or computer.
-2. Sign in with a Google account.
-3. Tap **Create API key**. It's free — no card required for the free tier.
-4. Copy the key.
-
-### 2. Host the site (needed for camera + GPS to work)
+### Host the site (needed for camera + GPS to work)
 Phones only allow camera and location access on a secure (HTTPS) site, so
 this needs to be hosted somewhere — it won't work opened as a local file.
 The free option is **GitHub Pages**:
@@ -52,11 +54,6 @@ The free option is **GitHub Pages**:
    `https://yourusername.github.io/reponame/`.
 5. Open that URL on your phone and, if you used a subfolder, add
    `house-visit-logger/` to the end.
-
-### 3. Add your API key in the app
-1. Open the site on your phone.
-2. Tap the **⚙️** icon top-right.
-3. Paste the API key you copied and confirm.
 
 You're set — tap the camera button to log your first visit.
 
