@@ -138,8 +138,9 @@ var Game = (function () {
 
     updatePhysics();
     Bike.suspension(bike);
+    Bike.resistance(bike, state.gravity);
     if (state.mode === "playing") Bike.control(bike, input);
-    world.step(CONFIG.physicsStepSec, 10, 8);
+    world.step(CONFIG.physicsStepSec, 20, 10);
     Bike.updateContacts(bike);
 
     if (state.mode === "playing") {
@@ -297,14 +298,6 @@ var Game = (function () {
   // ---------------------------------------------------
   // DRAWING
   // ---------------------------------------------------
-  // Fixed random stars (same every time)
-  var stars = [];
-  (function () {
-    var seed = 7;
-    function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
-    for (var i = 0; i < 160; i++) stars.push({ x: rnd() * 4000, y: rnd() * 1000, r: rnd() * 1.6 + 0.4 });
-  })();
-
   // Ground texture (a picture that repeats)
   var dirtImg = new Image(), dirtFill = null;
   dirtImg.src = ART.dirt;
@@ -328,38 +321,32 @@ var Game = (function () {
   function worldScale() { return viewH / 560; }
 
   function drawBackground() {
+    // Daytime sky
     var g = ctx.createLinearGradient(0, 0, 0, viewH);
-    g.addColorStop(0, "#07051a");
-    g.addColorStop(1, "#2a1a52");
+    g.addColorStop(0, "#5f9fd8");
+    g.addColorStop(0.65, "#a9d0ee");
+    g.addColorStop(1, "#dcecf7");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Stars (move very slowly = far away)
-    ctx.fillStyle = "#fff";
-    stars.forEach(function (st) {
-      var x = ((st.x - camera.x * 0.05) % 4000 + 4000) % 4000;
-      if (x > viewW) return;
-      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(st.x + state.steps * 0.02);
-      ctx.fillRect(x, st.y * viewH / 1000 * 0.7, st.r, st.r);
+    // Sun
+    ctx.fillStyle = "rgba(255, 250, 220, 0.35)";
+    ctx.beginPath(); ctx.arc(viewW * 0.8, viewH * 0.16, 70, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fffbe6";
+    ctx.beginPath(); ctx.arc(viewW * 0.8, viewH * 0.16, 38, 0, Math.PI * 2); ctx.fill();
+
+    // Distant hills, two layers (move slower than the ground = depth)
+    [[0.15, "#9db8c9", 0.52, 60], [0.3, "#7f9f86", 0.62, 40]].forEach(function (layer) {
+      ctx.fillStyle = layer[1];
+      ctx.beginPath();
+      ctx.moveTo(0, viewH);
+      for (var x = 0; x <= viewW + 20; x += 20) {
+        var wx = x + camera.x * layer[0];
+        ctx.lineTo(x, viewH * layer[2] - layer[3] * Math.sin(wx * 0.004) - layer[3] * 0.6 * Math.sin(wx * 0.011));
+      }
+      ctx.lineTo(viewW, viewH);
+      ctx.fill();
     });
-    ctx.globalAlpha = 1;
-
-    // Moon
-    ctx.fillStyle = "#f4f0d0";
-    ctx.beginPath(); ctx.arc(viewW * 0.8, viewH * 0.18, 46, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(0,0,0,0.08)";
-    ctx.beginPath(); ctx.arc(viewW * 0.8 - 14, viewH * 0.18 - 8, 10, 0, Math.PI * 2); ctx.fill();
-
-    // Distant hills (move slower than the ground = depth)
-    ctx.fillStyle = "#1a1035";
-    ctx.beginPath();
-    ctx.moveTo(0, viewH);
-    for (var x = 0; x <= viewW + 20; x += 20) {
-      var wx = x + camera.x * 0.3;
-      ctx.lineTo(x, viewH * 0.62 - 40 * Math.sin(wx * 0.004) - 25 * Math.sin(wx * 0.011));
-    }
-    ctx.lineTo(viewW, viewH);
-    ctx.fill();
   }
 
   function drawWorld() {
@@ -399,7 +386,7 @@ var Game = (function () {
       ctx.lineCap = "round";
       ctx.beginPath();
       pts.forEach(function (p, i) { if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
-      ctx.strokeStyle = "rgba(20, 12, 8, 0.55)";
+      ctx.strokeStyle = "rgba(60, 40, 25, 0.45)";
       ctx.lineWidth = 22;
       ctx.stroke();
       ctx.strokeStyle = level.groundTopColor;
@@ -552,9 +539,9 @@ var Tuning = (function () {
   // Slider list: which CONFIG value, its name, and its range
   var SLIDERS = [
     { key: "gravity", label: "Gravity (1 = Earth)", min: 0.2, max: 2.5, step: 0.05 },
-    { key: "enginePower", label: "Engine power (N·m)", min: 100, max: 1000, step: 10 },
-    { key: "leanStrength", label: "Lean strength (N·m)", min: 200, max: 3000, step: 50 },
-    { key: "suspensionStiffness", label: "Suspension stiffness (Hz)", min: 1.5, max: 8, step: 0.1 },
+    { key: "motorPower", label: "Motor power (W)", min: 10000, max: 60000, step: 1000 },
+    { key: "flipAssist", label: "Flip assist (N·m, 0 = real life)", min: 0, max: 3000, step: 50 },
+    { key: "suspensionStiffness", label: "Spring stiffness (1 = stock)", min: 0.5, max: 2, step: 0.05 },
     { key: "wheelGrip", label: "Wheel grip", min: 0.2, max: 2, step: 0.05 }
   ];
 

@@ -38,8 +38,13 @@ function check(name, ok, detail) {
   check("Page loads with no console errors", errors.length === 0, errors.join(" | "));
   await shot("01-start");
 
-  // 2. Hold gas for 5 seconds (real keyboard, real time)
-  await page.keyboard.press("KeyR");
+  // 2. Hold gas for 5 seconds on flat ground (real keyboard, real time)
+  await page.evaluate(() => {
+    LEVELS.push({ name: "Flat test", physics: {}, groundColor: "#6b4f3a", groundTopColor: "#a07e5e",
+      start: { x: 0, y: -40 }, checkpoints: [], finish: { x: 100000 }, fallLimitY: 900,
+      terrain: [[{ x: -600, y: 0 }, { x: 20000, y: 0 }]], zones: [] });
+    Game.loadLevel(LEVELS.length - 1);
+  });
   await page.waitForTimeout(300);
   const before = await bike();
   let worstTilt = 0;
@@ -52,6 +57,7 @@ function check(name, ok, detail) {
   }
   await page.keyboard.up("ArrowUp");
   const after = await bike();
+  await page.evaluate(() => { LEVELS.pop(); Game.loadLevel(0); });
   check("Gas for 5s moves the bike forward", after.x - before.x > 1000, "moved " + Math.round(after.x - before.x) + "px");
   check("Bike stays upright while accelerating", worstTilt < 1.2 && after.crashes === 0,
     "max tilt " + worstTilt.toFixed(2) + " rad, crashes " + after.crashes);
@@ -104,17 +110,21 @@ function check(name, ok, detail) {
   const run = await page.evaluate(() => {
     const G = Game, s = G.state;
     s.paused = true;
-    let sawZone = false, zoneGravity = 0, flipDone = false, startRot = 0, leaning = false;
+    let flipDone = false, startRot = 0, leaning = false;
     for (let i = 0; i < 60 * 90 && s.mode !== "finished"; i++) {
       const b = s.bike, raw = b.chassis.getAngle(), ground = b.rearOnGround || b.frontOnGround;
       const a = Math.atan2(Math.sin(raw), Math.cos(raw)); // tilt between -PI and PI
       const w = b.chassis.getAngularVelocity();
       const inp = { gas: true, brake: false, leanBack: false, leanForward: false };
+      // Like a real rider: slow down before the crest of the big hill
+      const px = G.bikePos().x, kmh = Math.hypot(G.bikeVel().x, G.bikeVel().y) / CONFIG.pixelsPerMetre * 3.6;
+      if (px > 4450 && px < 5560 && kmh > 45) { inp.gas = false; inp.brake = kmh > 55; }
       if (ground) leaning = false;
-      if (s.zone && !ground && !flipDone && G.bikePos().x > 6400) {
-        // In the low-gravity jump: do one backflip
+      if (!ground && !flipDone && (leaning || (px > 7002 && px < 7300))) {
+        // Off the big double jump: do one backflip (stop leaning a bit
+        // early, because the spin carries on)
         if (!leaning) { leaning = true; startRot = raw; }
-        if (raw - startRot > -2 * Math.PI + 0.6) inp.leanBack = true; else flipDone = true;
+        if (raw - startRot > -2 * Math.PI + 1.2) inp.leanBack = true; else flipDone = true;
       } else if (ground) {
         const e = a + 0.2 * w;
         if (e < -0.35) inp.leanForward = true;
@@ -126,15 +136,20 @@ function check(name, ok, detail) {
       }
       Object.assign(G.input, inp);
       G.step();
-      if (s.zone) { sawZone = true; zoneGravity = s.gravity; }
     }
     Object.assign(G.input, { gas: false, brake: false, leanBack: false, leanForward: false });
     s.paused = false;
-    return { mode: s.mode, sawZone, zoneGravity, backflips: s.backflips, score: s.score,
+    // Physics zones: add a test zone around the bike and check gravity changes
+    LEVELS[0].zones.push({ x: -1e6, y: -1e6, w: 2e6, h: 2e6, physics: { gravityScale: 0.35 } });
+    G.step();
+    const zoneGravity = s.gravity;
+    LEVELS[0].zones.pop();
+    G.step();
+    return { mode: s.mode, zoneGravity, backflips: s.backflips, score: s.score,
       cp: s.checkpointIndex, crashes: s.crashes, timeMs: s.timeMs };
   });
   check("Checkpoint is reached", run.cp === 0);
-  check("Low-gravity zone changes gravity", run.sawZone && run.zoneGravity < 5, "gravity " + run.zoneGravity.toFixed(2) + " m/s²");
+  check("Physics zones change gravity", Math.abs(run.zoneGravity - 9.81 * 0.35) < 0.01, "gravity in zone " + run.zoneGravity.toFixed(2) + " m/s²");
   check("Backflip is detected and scored", run.backflips >= 1 && run.score > 0, "backflips " + run.backflips + ", score " + run.score);
   check("Finish line ends the level", run.mode === "finished",
     "time " + (run.timeMs / 1000).toFixed(1) + "s, crashes " + run.crashes);

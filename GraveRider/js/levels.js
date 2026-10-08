@@ -71,12 +71,12 @@ var LEVELS = [
   {
     name: "Test Track",
     physics: { gravityScale: 1, gravityDir: { x: 0, y: 1 }, bounce: 0, friction: 1 },
-    groundColor: "#3a2a22",
-    groundTopColor: "#8a6a50",
+    groundColor: "#6b4f3a",
+    groundTopColor: "#a07e5e",
 
     start: { x: 0, y: -40 },
     checkpoints: [{ x: 4500, y: -40 }],
-    finish: { x: 7900 },
+    finish: { x: 9000 },
     fallLimitY: 900, // falling below this counts as a crash
 
     // Each array is one continuous piece of ground. A gap between
@@ -108,28 +108,26 @@ var LEVELS = [
         // Steep hill up, a plateau, and back down
         Shapes.curve(4800, 0, 5400, -300, 16),
         Shapes.line(5400, -300, 5550, -300),
-        Shapes.curve(5550, -300, 6000, 0, 14),
-        // Low-gravity zone: a launch ramp and a long floaty landing
-        Shapes.line(6000, 0, 6150, 0),
-        Shapes.kicker(6150, 0, 6400, -120, 10),
-        [{ x: 6415, y: -120 }],
-        Shapes.curve(6415, -120, 6500, 0, 6),
-        Shapes.line(6500, 0, 7000, 0),
-        // Final hills to the finish
-        Shapes.hills(7000, 7800, 0, 40, 400),
-        Shapes.line(7800, 0, 8600, 0),
+        Shapes.curve(5550, -300, 6250, 0, 18),
+        Shapes.line(6250, 0, 6600, 0),
+        // Big motocross double jump (real size: 2.2 m tall, 30° take-off face
+        // with a smooth 8 m transition, 14 m gap; needs about 13 m/s).
+        // Coming up short lands you on the flat between.
+        Shapes.kicker(6600, 0, 6900, -87, 12),
+        [{ x: 6992, y: -140 }, { x: 7002, y: -140 }],
+        Shapes.curve(7002, -140, 7070, 0, 6),
+        Shapes.line(7070, 0, 7700, 0),
+        // Landing ramp: 40° back face (climbable if you come up short)
+        [{ x: 7867, y: -140 }, { x: 7920, y: -140 }],
+        Shapes.curve(7920, -140, 8800, 0, 20),
+        Shapes.line(8800, 0, 9600, 0),
         // End wall so you can't drive off the world
-        [{ x: 8800, y: -600 }]
+        [{ x: 9800, y: -600 }]
       )
     ],
 
-    zones: [
-      {
-        x: 6050, y: -900, w: 1000, h: 1000,
-        label: "LOW GRAVITY",
-        color: "rgba(120, 200, 255, 0.10)",
-        physics: { gravityScale: 0.35 }
-      }
-    ]
+    // Physics zones (none on the test track for now; the system still works,
+    // e.g. { x, y, w, h, label, color, physics: { gravityScale: 0.35 } })
+    zones: []
   }
 ];

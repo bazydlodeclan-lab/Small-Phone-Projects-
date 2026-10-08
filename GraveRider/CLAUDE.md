@@ -14,6 +14,14 @@ The finished game has 4 levels, played in this order:
 | 3 | Moon    | Low gravity.                                           |
 | 4 | Bat     | Gravity-flip zones: you ride on the ceiling.           |
 
+## Current direction (owner request, 2026-10-08) — "for now"
+- The bike is modelled on the published specs of a real electric MX bike (Stark VARG
+  MX 1.2, 80 hp): see `js/config.js` for every number and its source. The brand name
+  and its photos are NOT used in the game (trademark/copyright).
+- Look: neutral, no Halloween theme, daytime. Test level has no low-gravity zone.
+- OPEN QUESTION for the owner: is this permanent (changes the 4 themed levels below)
+  or only for the test track? Ask before building Week 2 levels.
+
 ## HARD SCOPE LIMIT
 The game is: **4 levels, a timer, a flip bonus and a score.** Nothing else.
 
@@ -42,12 +50,13 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 |------|--------------|
 | `index.html` | The page: canvas, tuning panel HTML/CSS, script tags. |
 | `lib/planck.min.js` | Planck.js 1.5.0 physics engine (MIT license; a JavaScript port of Box2D). Official npm build. |
-| `js/config.js` | `CONFIG`: every tunable number in real units (m, kg, s, N·m, Hz). `CONFIG_DEFAULTS` is a copy used by the panel's Reset button. `ART`: the picture file for each part. |
+| `js/config.js` | `CONFIG`: every physics number in real units (m, kg, s, N, N·m, W), each tagged [SPEC], [MEASURED] or [ESTIMATE]. `CONFIG_DEFAULTS` is a copy used by the panel's Reset button. `ART`: the picture file for each part. |
 | `js/levels.js` | `Shapes` helpers (line, hills, curve, kicker, join) and the `LEVELS` array. |
 | `js/bike.js` | `Bike`: builds the bike (chassis, 2 wheels on wheel joints, rider body on a hip joint), controls, throttle control, suspension tuning, crash let-go, ground contact detection, drawing with the art files. |
 | `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain (Planck chain shapes), physics zones, crash/checkpoint/finish, flip scoring, camera, input, drawing, HUD. Also `Tuning` (the T panel). |
-| `art/` | `bike.svg`, `wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
+| `art/` | `bike.svg`, `wheel.svg` (front), `rear-wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
 | `tests/run-tests.js` | Automated Playwright tests (21 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
+| `tests/physics-report.js` | Runs physics experiments (sag, drops, acceleration, braking, hill climbs, leaning, throttle/brake in the air) and writes `PHYSICS_REPORT.md`. Re-run after changing `config.js`. |
 
 ### Level data format (`js/levels.js`)
 ```
@@ -72,22 +81,29 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
   high and spins it. Gentle ramps and tabletops ride better; hills over ~40° are hard.
 
 ### Physics notes (important for future changes)
-- Real-world units and masses: bike 105 kg, rider 75 kg, wheels 9 kg, gravity 9.81.
-- Wheels use Planck `WheelJoint`s (implicit spring + damper = stable). Planck rates
-  the spring against the wheel's own mass, so `Bike.suspension()` converts the
-  slider's Hz into the right value for the load each spring carries. Two `RopeJoint`s
-  per wheel act as hard stops at full extension and full compression.
-  (An earlier hand-made spring was unstable on hard hits — don't go back to it.)
-- The engine is the rear WheelJoint motor. A "gearbox" limits the target wheel speed
-  to bike speed + `gearSlip`, and the rear wheel has extra inertia
-  (`drivetrainInertia`) like a real engine flywheel. Without these, the wheel races
-  up in the air and the reaction flips the bike.
-- `throttleControl()` eases off the engine in a steep wheelie (front wheel up for
-  8+ steps), like a real rider; otherwise holding gas loops the bike.
+- Real-world units and masses: 118 kg bike (96 kg chassis + 9 kg front / 13 kg rear
+  wheel), 75 kg rider, 9.81 m/s². Real geometry: 1.487 m wheelbase, 27.3° rake,
+  310/303 mm travel, 21"/18" wheels (radii 0.348/0.341 m). See `GEO` in bike.js.
+- Motor: rear WheelJoint motor. Torque = min(978 N·m, 60 kW ÷ wheel speed), single
+  speed (no gearbox), max wheel speed = 145 km/h. Rear wheel inertia includes the
+  motor's rotor seen through the chain (`drivetrainInertia`, an estimate).
+- Air drag (½ρ·CdA·v²) on the chassis and rolling resistance on wheels in contact:
+  `Bike.resistance()`.
+- Suspension: Planck `WheelJoint` springs (implicit = stable). `Bike.suspension()`
+  converts real spring rates (N/m) and damping ratios into Planck's terms (Planck
+  rates springs against the wheel's mass). Preload = the spring's rest point is set
+  beyond full extension. Two `RopeJoint`s per wheel are the hard stops, plus a
+  bottoming cushion (last 15% of travel, 8× stiffer). Sag: 97 mm rear / 66 mm front.
+- Rider throttle + brake control (`CONFIG.throttleControl`, on by default; it stands
+  in for a real rider's throttle hand since keys are on/off):
+  wheelspin control (tyre ≤ 3 m/s faster than the bike), wheelie control (measured
+  against the slope under the rear tyre, less wheelie allowed uphill), throttle held
+  steady in the air (wheel keeps pace with the bike), and front brake eased when the
+  rear wheel lifts. With it off, full throttle loops the bike in ~1 s.
 - The rider is a separate body on a hip joint at the footpegs. Leaning moves the
-  rider (real weight shift, speed-limited by `riderLeanSpeed`) and adds
-  `leanStrength` torque to the chassis so flips are possible. There is no air spin
-  damping: like real physics, the spin continues until you counter-lean.
+  rider (real weight shift) — in the air that alone turns the bike only ~12°/s.
+  `flipAssist` (N·m) adds turning so flips are possible; 0 = real life.
+  The rider leans back automatically when braking.
 - Crash = rider's head or torso touching the ground. On a crash the hip joint is
   destroyed so the rider falls off.
 - A wheel counts as "on the ground" if it touched in the last 3 steps.
@@ -96,16 +112,20 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
   is one flip. Negative angle = backflip. A crash within 12 steps of landing cancels it.
 - Score = flip points (`flipPoints × turns²` per jump) + time bonus at the finish
   (`10000 − time in hundredths of a second`, never below 0).
+- Level design at this bike's speed: it reaches ~85 km/h on short straights, so
+  hill faces become launch ramps — leave run-out room and give jumps long landings.
 
 ## Week 1 status
-Done: realistic bike physics (Planck.js), level system with zones, test level
-("Test Track"), HUD, flip scoring, finish screen, camera with look-ahead, tuning
-panel with Copy settings, swappable art files (bike, wheel, rider, dirt),
-21/21 automated tests passing.
+Done: physics engine Planck.js; bike modelled on real electric MX bike specs (motor
+torque/power curve, real geometry, suspension rates/sag/travel, brakes, drag);
+rider throttle/brake control; level system with zones; test level ("Test Track",
+neutral daytime look, real-size double jump); HUD; flip scoring; finish screen;
+camera; tuning panel; swappable art; physics report; 21/21 automated tests passing.
 
 Known things to handle in Week 2:
-- Bat level: gravity pointing up means the rider's "upright" is flipped; check crash
-  detection, throttle control, flip counting and camera framing on the ceiling.
+- Answer the open question above (themes / low gravity) before building levels.
+- Bat level: gravity pointing up — check crash detection, throttle control (uses the
+  slope under the rear tyre), flip counting and camera framing on the ceiling.
 - Pumpkin level: trampolines can be terrain pieces inside a zone with `bounce`, or
   separate bouncy bodies — decide when building it.
 - The test level is a placeholder; replace it with the 4 real levels.
