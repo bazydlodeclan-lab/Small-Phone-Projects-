@@ -1,0 +1,135 @@
+// =====================================================
+// GRAVE RIDER — LEVEL DATA
+// Each level is plain data. Coordinates are in pixels:
+// x grows to the right, y grows DOWNWARD (so -200 is
+// higher up than 0).
+//
+// physics (all optional, per level):
+//   gravityScale  multiplies the base gravity (0.4 = moon)
+//   gravityDir    {x, y} direction of gravity ({x:0,y:-1} = ceiling)
+//   bounce        0 = no bounce, 1 = super bouncy
+//   friction      multiplies tyre grip (0.3 = icy)
+//
+// zones: rectangles that change physics while the bike
+// is inside them. They use the same physics keys.
+// =====================================================
+
+// --- Helpers that generate ground shapes ---
+var Shapes = {
+  // A straight line from (x0, y0) to (x1, y1)
+  line: function (x0, y0, x1, y1) {
+    return [{ x: x0, y: y0 }, { x: x1, y: y1 }];
+  },
+  // Smooth rolling hills between x0 and x1 around height y
+  hills: function (x0, x1, y, height, width) {
+    var pts = [];
+    for (var x = x0; x <= x1; x += 25) {
+      var t = (x - x0) / width;
+      pts.push({ x: x, y: y - height * (0.5 - 0.5 * Math.cos(t * Math.PI * 2)) });
+    }
+    return pts;
+  },
+  // Smooth S-shaped curve from (x0, y0) to (x1, y1)
+  curve: function (x0, y0, x1, y1, steps) {
+    var pts = [];
+    steps = steps || 12;
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      var s = 0.5 - 0.5 * Math.cos(t * Math.PI);
+      pts.push({ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * s });
+    }
+    return pts;
+  },
+  // A ramp that curves upward more and more (good for jumps)
+  kicker: function (x0, y0, x1, y1, steps) {
+    var pts = [];
+    steps = steps || 12;
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      pts.push({ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t * t });
+    }
+    return pts;
+  },
+  // Joins several point lists into one ground line (drops duplicate joints)
+  join: function () {
+    var out = [];
+    for (var i = 0; i < arguments.length; i++) {
+      var part = arguments[i];
+      for (var j = 0; j < part.length; j++) {
+        var p = part[j];
+        var last = out[out.length - 1];
+        if (last && Math.abs(last.x - p.x) < 0.01 && Math.abs(last.y - p.y) < 0.01) continue;
+        out.push(p);
+      }
+    }
+    return out;
+  }
+};
+
+var LEVELS = [
+  // ---------------- TEST LEVEL ----------------
+  {
+    name: "Test Track",
+    physics: { gravityScale: 1, gravityDir: { x: 0, y: 1 }, bounce: 0, friction: 1 },
+    groundColor: "#3b2f4a",
+    groundTopColor: "#6b5a85",
+
+    start: { x: 0, y: -40 },
+    checkpoints: [{ x: 4500, y: -40 }],
+    finish: { x: 7900 },
+    fallLimitY: 900, // falling below this counts as a crash
+
+    // Each array is one continuous piece of ground. A gap between
+    // two pieces is a hole you have to jump.
+    terrain: [
+      Shapes.join(
+        // Flat start
+        Shapes.line(-600, 0, 500, 0),
+        // Rolling hills
+        Shapes.hills(500, 2100, 0, 40, 533.33),
+        // Flat, then a small ramp with a drop-off
+        Shapes.line(2100, 0, 2400, 0),
+        Shapes.kicker(2400, 0, 2560, -55, 8),
+        [{ x: 2575, y: -55 }],
+        Shapes.curve(2575, -55, 2760, 0, 8),
+        // Run-up to the big ramp
+        Shapes.line(2760, 0, 3150, 0),
+        // Big ramp
+        Shapes.kicker(3150, 0, 3420, -105, 14),
+        // Cliff edge into the gap
+        [{ x: 3430, y: -105 }, { x: 3438, y: 1200 }]
+      ),
+      Shapes.join(
+        // Far side of the gap: landing slope back down to the ground
+        [{ x: 3620, y: 1200 }, { x: 3630, y: -70 }],
+        Shapes.curve(3630, -70, 4250, 0, 14),
+        // Flat with the checkpoint
+        Shapes.line(4250, 0, 4800, 0),
+        // Steep hill up, a plateau, and back down
+        Shapes.curve(4800, 0, 5250, -330, 14),
+        Shapes.line(5250, -330, 5450, -330),
+        Shapes.curve(5450, -330, 5950, 0, 14),
+        // Low-gravity zone: a launch ramp and a long floaty landing
+        Shapes.line(5950, 0, 6150, 0),
+        Shapes.kicker(6150, 0, 6400, -120, 10),
+        [{ x: 6415, y: -120 }],
+        Shapes.curve(6415, -120, 6500, 0, 6),
+        Shapes.line(6500, 0, 7000, 0),
+        // Final hills to the finish
+        Shapes.hills(7000, 7800, 0, 40, 400),
+        Shapes.line(7800, 0, 8600, 0),
+        // End wall so you can't drive off the world
+        [{ x: 8800, y: -600 }]
+      )
+    ],
+
+    zones: [
+      {
+        x: 6050, y: -900, w: 1000, h: 1000,
+        label: "LOW GRAVITY",
+        color: "rgba(120, 200, 255, 0.10)",
+        physics: { gravityScale: 0.35 }
+      }
+    ]
+  }
+];
