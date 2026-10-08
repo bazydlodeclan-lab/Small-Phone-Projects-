@@ -71,8 +71,8 @@ var LEVELS = [
   {
     name: "Test Track",
     physics: { gravityScale: 1, gravityDir: { x: 0, y: 1 }, bounce: 0, friction: 1 },
-    groundColor: "#3b2f4a",
-    groundTopColor: "#6b5a85",
+    groundColor: "#3a2a22",
+    groundTopColor: "#8a6a50",
 
     start: { x: 0, y: -40 },
     checkpoints: [{ x: 4500, y: -40 }],
@@ -86,12 +86,12 @@ var LEVELS = [
         // Flat start
         Shapes.line(-600, 0, 500, 0),
         // Rolling hills
-        Shapes.hills(500, 2100, 0, 40, 533.33),
-        // Flat, then a small ramp with a drop-off
-        Shapes.line(2100, 0, 2400, 0),
-        Shapes.kicker(2400, 0, 2560, -55, 8),
-        [{ x: 2575, y: -55 }],
-        Shapes.curve(2575, -55, 2760, 0, 8),
+        Shapes.hills(500, 2100, 0, 28, 800),
+        // Flat, then a small ramp (a low tabletop jump)
+        Shapes.line(2100, 0, 2350, 0),
+        Shapes.curve(2350, 0, 2560, -45, 10),
+        Shapes.line(2560, -45, 2600, -45),
+        Shapes.curve(2600, -45, 2760, 0, 8),
         // Run-up to the big ramp
         Shapes.line(2760, 0, 3150, 0),
         // Big ramp
@@ -106,11 +106,11 @@ var LEVELS = [
         // Flat with the checkpoint
         Shapes.line(4250, 0, 4800, 0),
         // Steep hill up, a plateau, and back down
-        Shapes.curve(4800, 0, 5250, -330, 14),
-        Shapes.line(5250, -330, 5450, -330),
-        Shapes.curve(5450, -330, 5950, 0, 14),
+        Shapes.curve(4800, 0, 5400, -300, 16),
+        Shapes.line(5400, -300, 5550, -300),
+        Shapes.curve(5550, -300, 6000, 0, 14),
         // Low-gravity zone: a launch ramp and a long floaty landing
-        Shapes.line(5950, 0, 6150, 0),
+        Shapes.line(6000, 0, 6150, 0),
         Shapes.kicker(6150, 0, 6400, -120, 10),
         [{ x: 6415, y: -120 }],
         Shapes.curve(6415, -120, 6500, 0, 6),

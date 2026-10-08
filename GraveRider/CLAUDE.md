@@ -29,23 +29,24 @@ anything, and suggest finishing the 4 levels first.
 
 ## How to run
 Double-click `index.html`. No server, no install, works offline
-(Matter.js is stored locally in `lib/`).
+(Planck.js is stored locally in `lib/`).
 
 Controls: Up/W gas · Down/S brake (reverse when stopped) · Left/A lean back ·
 Right/D lean forward · R restart level · T tuning panel.
 
 ## How the code is organized
 Plain `<script>` files (no ES modules) so the game works from `file://`.
-Load order in `index.html` matters: matter → config → levels → bike → game.
+Load order in `index.html` matters: planck → config → levels → bike → game.
 
 | File | What it does |
 |------|--------------|
 | `index.html` | The page: canvas, tuning panel HTML/CSS, script tags. |
-| `lib/matter.min.js` | Matter.js 0.19.0 physics engine (official npm build, same file cdnjs serves). |
-| `js/config.js` | `CONFIG`: every tunable number (gravity, engine, lean, suspension, grip, camera, scoring). `CONFIG_DEFAULTS` is a copy used by the panel's Reset button. |
+| `lib/planck.min.js` | Planck.js 1.5.0 physics engine (MIT license; a JavaScript port of Box2D). Official npm build. |
+| `js/config.js` | `CONFIG`: every tunable number in real units (m, kg, s, N·m, Hz). `CONFIG_DEFAULTS` is a copy used by the panel's Reset button. `ART`: the picture file for each part. |
 | `js/levels.js` | `Shapes` helpers (line, hills, curve, kicker, join) and the `LEVELS` array. |
-| `js/bike.js` | `Bike`: builds the bike (chassis compound body = frame + rider torso + head sensor, plus 2 wheels on V-shaped spring pairs), controls, spring damping, bump stop, speed limit, ground contact detection, drawing. |
-| `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain bodies, physics zones, crash/checkpoint/finish, flip scoring, camera, input, drawing, HUD. Also `Tuning` (the T panel). |
+| `js/bike.js` | `Bike`: builds the bike (chassis, 2 wheels on wheel joints, rider body on a hip joint), controls, throttle control, suspension tuning, crash let-go, ground contact detection, drawing with the art files. |
+| `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain (Planck chain shapes), physics zones, crash/checkpoint/finish, flip scoring, camera, input, drawing, HUD. Also `Tuning` (the T panel). |
+| `art/` | `bike.svg`, `wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
 | `tests/run-tests.js` | Automated Playwright tests (21 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
 
 ### Level data format (`js/levels.js`)
@@ -59,24 +60,37 @@ Load order in `index.html` matters: matter → config → levels → bike → ga
   zones: [ { x, y, w, h, label, color, physics: { ...same keys as level physics } } ]
 }
 ```
-- Coordinates are pixels, **y grows downward**.
-- Each terrain piece is one continuous ground line; a gap between pieces is a hole.
-  `solidAbove: true` makes the solid part sit above the line (for ceilings — Bat level).
+- Level coordinates are **pixels**, **y grows downward**. Physics converts them to
+  metres with `CONFIG.pixelsPerMetre` (64 px = 1 m). The bike is 1.48 m between axles.
+- Each terrain piece is one continuous ground line (a Planck chain shape, so no
+  bumps at the joins); a gap between pieces is a hole.
+  `solidAbove: true` only changes drawing (fills above the line, for ceilings — Bat level).
 - Physics in use = defaults → level `physics` → the zone the bike is in.
-  `gravityScale` multiplies `CONFIG.gravity`; `friction` multiplies `CONFIG.wheelGrip`;
-  `bounce` is set on the tyres (0 = none, 1 = very bouncy).
+  `gravityScale` multiplies 9.81 m/s² × `CONFIG.gravity`; `friction` multiplies
+  `CONFIG.wheelGrip`; `bounce` is set on the tyres (0 = none, 1 = very bouncy).
+- Design jumps for real scale: at 15 m/s a steep "kicker" lip launches the bike very
+  high and spins it. Gentle ramps and tabletops ride better; hills over ~40° are hard.
 
 ### Physics notes (important for future changes)
-- Matter.js's built-in constraint damping ignores rotation and kills flips, so the
-  springs use `damping: 0` and `Bike.dampSprings()` does rotation-aware damping instead.
-- Leaning (`addSpin`) spins the whole bike around its combined centre of mass so it
-  doesn't fight the springs. Spin is capped by `maxSpinSpeed` and fades with
-  `airSpinDamping` when you let go.
-- `Bike.limitTravel()` is a bump stop: without it, a hard landing can push the frame
-  through the springs so the suspension turns inside-out.
-- `Bike.limitSpeed()` caps part speed so wheels can't punch through the ground.
-- A wheel counts as "on the ground" if it touched in the last 4 steps (rolling wheels
-  lose contact for single steps).
+- Real-world units and masses: bike 105 kg, rider 75 kg, wheels 9 kg, gravity 9.81.
+- Wheels use Planck `WheelJoint`s (implicit spring + damper = stable). Planck rates
+  the spring against the wheel's own mass, so `Bike.suspension()` converts the
+  slider's Hz into the right value for the load each spring carries. Two `RopeJoint`s
+  per wheel act as hard stops at full extension and full compression.
+  (An earlier hand-made spring was unstable on hard hits — don't go back to it.)
+- The engine is the rear WheelJoint motor. A "gearbox" limits the target wheel speed
+  to bike speed + `gearSlip`, and the rear wheel has extra inertia
+  (`drivetrainInertia`) like a real engine flywheel. Without these, the wheel races
+  up in the air and the reaction flips the bike.
+- `throttleControl()` eases off the engine in a steep wheelie (front wheel up for
+  8+ steps), like a real rider; otherwise holding gas loops the bike.
+- The rider is a separate body on a hip joint at the footpegs. Leaning moves the
+  rider (real weight shift, speed-limited by `riderLeanSpeed`) and adds
+  `leanStrength` torque to the chassis so flips are possible. There is no air spin
+  damping: like real physics, the spin continues until you counter-lean.
+- Crash = rider's head or torso touching the ground. On a crash the hip joint is
+  destroyed so the rider falls off.
+- A wheel counts as "on the ground" if it touched in the last 3 steps.
 - Flips: while in the air, the lowest and highest angle are tracked relative to the
   nearest "upright". Each full turn past upright (with `flipLandingSlack` tolerance)
   is one flip. Negative angle = backflip. A crash within 12 steps of landing cancels it.
@@ -84,13 +98,15 @@ Load order in `index.html` matters: matter → config → levels → bike → ga
   (`10000 − time in hundredths of a second`, never below 0).
 
 ## Week 1 status
-Done: bike physics, level system with zones, test level ("Test Track"), HUD,
-flip scoring, finish screen, camera with look-ahead, tuning panel with Copy settings,
+Done: realistic bike physics (Planck.js), level system with zones, test level
+("Test Track"), HUD, flip scoring, finish screen, camera with look-ahead, tuning
+panel with Copy settings, swappable art files (bike, wheel, rider, dirt),
 21/21 automated tests passing.
 
 Known things to handle in Week 2:
 - Bat level: gravity pointing up means the rider's "upright" is flipped; check crash
-  detection, flip counting and camera framing when riding on the ceiling.
+  detection, throttle control, flip counting and camera framing on the ceiling.
 - Pumpkin level: trampolines can be terrain pieces inside a zone with `bounce`, or
   separate bouncy bodies — decide when building it.
 - The test level is a placeholder; replace it with the 4 real levels.
+- Final art (Week 3): replace the files in `art/` following `art/README.md`.

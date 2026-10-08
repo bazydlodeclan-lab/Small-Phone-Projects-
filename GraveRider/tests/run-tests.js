@@ -28,8 +28,8 @@ function check(name, ok, detail) {
   await page.waitForTimeout(1000);
   const shot = (name) => page.screenshot({ path: path.join(SHOTS, name + ".png") });
   const bike = () => page.evaluate(() => {
-    const s = Game.state, c = s.bike.chassis;
-    return { x: c.position.x, y: c.position.y, angle: c.angle, mode: s.mode, crashes: s.crashes,
+    const s = Game.state, c = s.bike.chassis, p = Game.bikePos();
+    return { x: p.x, y: p.y, angle: c.getAngle(), spin: c.getAngularVelocity(), mode: s.mode, crashes: s.crashes,
       timeMs: s.timeMs, score: s.score, backflips: s.backflips, frontflips: s.frontflips,
       checkpointIndex: s.checkpointIndex };
   });
@@ -58,7 +58,7 @@ function check(name, ok, detail) {
 
   // 3. Lean in the air rotates the bike
   await page.keyboard.press("KeyR");
-  await page.evaluate(() => Game.spawnBike({ x: 200, y: -900 }));
+  await page.evaluate(() => Game.spawnBike({ x: 200, y: -1500 }));
   const a0 = (await bike()).angle;
   await page.keyboard.down("ArrowLeft");
   await page.waitForTimeout(600);
@@ -66,7 +66,7 @@ function check(name, ok, detail) {
   await page.keyboard.up("ArrowLeft");
   const a1 = (await bike()).angle;
   check("Leaning back in the air rotates the bike backwards", a1 - a0 < -1.5, "rotated " + (a1 - a0).toFixed(2) + " rad");
-  await page.evaluate(() => Game.spawnBike({ x: 200, y: -900 }));
+  await page.evaluate(() => Game.spawnBike({ x: 200, y: -1500 }));
   const f0 = (await bike()).angle;
   await page.keyboard.down("ArrowRight");
   await page.waitForTimeout(600);
@@ -76,13 +76,14 @@ function check(name, ok, detail) {
 
   // 4. Headfirst into the ground = crash, then auto restart
   await page.keyboard.press("KeyR");
-  await page.evaluate(() => Game.spawnBike({ x: 200, y: -500 }));
+  await page.evaluate(() => Game.spawnBike({ x: 200, y: -900 }));
   // Lean forward until upside down, then hold it there while falling
   let crashed = false, held = "";
   for (let i = 0; i < 200 && !crashed; i++) {
     const b = await bike();
     crashed = b.mode === "crashed";
-    const want = b.angle < Math.PI - 0.25 ? "ArrowRight" : b.angle > Math.PI + 0.25 ? "ArrowLeft" : "";
+    const e = b.angle + 0.35 * b.spin; // where the bike will be in a moment
+    const want = e < Math.PI - 0.25 ? "ArrowRight" : e > Math.PI + 0.25 ? "ArrowLeft" : "";
     if (want !== held) {
       if (held) await page.keyboard.up(held);
       if (want) await page.keyboard.down(want);
@@ -105,24 +106,27 @@ function check(name, ok, detail) {
     s.paused = true;
     let sawZone = false, zoneGravity = 0, flipDone = false, startRot = 0, leaning = false;
     for (let i = 0; i < 60 * 90 && s.mode !== "finished"; i++) {
-      const b = s.bike, raw = b.chassis.angle, ground = b.rearOnGround || b.frontOnGround;
+      const b = s.bike, raw = b.chassis.getAngle(), ground = b.rearOnGround || b.frontOnGround;
       const a = Math.atan2(Math.sin(raw), Math.cos(raw)); // tilt between -PI and PI
+      const w = b.chassis.getAngularVelocity();
       const inp = { gas: true, brake: false, leanBack: false, leanForward: false };
       if (ground) leaning = false;
-      if (s.zone && !ground && !flipDone && b.chassis.position.x > 6400) {
+      if (s.zone && !ground && !flipDone && G.bikePos().x > 6400) {
         // In the low-gravity jump: do one backflip
         if (!leaning) { leaning = true; startRot = raw; }
         if (raw - startRot > -2 * Math.PI + 0.6) inp.leanBack = true; else flipDone = true;
       } else if (ground) {
-        if (a < -0.35) inp.leanForward = true;
-        if (a > 0.5) inp.leanBack = true;
+        const e = a + 0.2 * w;
+        if (e < -0.35) inp.leanForward = true;
+        if (e > 0.5) inp.leanBack = true;
       } else {
-        if (a < -0.15) inp.leanForward = true;
-        if (a > 0.15) inp.leanBack = true;
+        const e = a + 0.35 * w; // aim to land level
+        if (e < -0.1) inp.leanForward = true;
+        if (e > 0.1) inp.leanBack = true;
       }
       Object.assign(G.input, inp);
       G.step();
-      if (s.zone) { sawZone = true; zoneGravity = G.engine.gravity.scale; }
+      if (s.zone) { sawZone = true; zoneGravity = s.gravity; }
     }
     Object.assign(G.input, { gas: false, brake: false, leanBack: false, leanForward: false });
     s.paused = false;
@@ -130,7 +134,7 @@ function check(name, ok, detail) {
       cp: s.checkpointIndex, crashes: s.crashes, timeMs: s.timeMs };
   });
   check("Checkpoint is reached", run.cp === 0);
-  check("Low-gravity zone changes gravity", run.sawZone && run.zoneGravity < 0.0005, "gravity scale " + run.zoneGravity);
+  check("Low-gravity zone changes gravity", run.sawZone && run.zoneGravity < 5, "gravity " + run.zoneGravity.toFixed(2) + " m/s²");
   check("Backflip is detected and scored", run.backflips >= 1 && run.score > 0, "backflips " + run.backflips + ", score " + run.score);
   check("Finish line ends the level", run.mode === "finished",
     "time " + (run.timeMs / 1000).toFixed(1) + "s, crashes " + run.crashes);
@@ -143,13 +147,13 @@ function check(name, ok, detail) {
     const G = Game, s = G.state, none = { gas: false, brake: false, leanBack: false, leanForward: false };
     s.paused = true;
     // Frontflip: lean forward one full turn, then level out before landing
-    G.spawnBike({ x: 300, y: -1100 });
+    G.spawnBike({ x: 300, y: -1500 });
     for (let i = 0; i < 400; i++) {
-      const raw = s.bike.chassis.angle, a = Math.atan2(Math.sin(raw), Math.cos(raw));
+      const raw = s.bike.chassis.getAngle(), w = s.bike.chassis.getAngularVelocity();
+      const e = raw - 2 * Math.PI + 0.35 * w; // aim for exactly one turn
       const inp = Object.assign({}, none);
-      if (raw < 2 * Math.PI - 0.6) inp.leanForward = true;
-      else if (a > 0.1) inp.leanBack = true;
-      else if (a < -0.1) inp.leanForward = true;
+      if (e < -0.1) inp.leanForward = true;
+      else if (e > 0.1) inp.leanBack = true;
       Object.assign(G.input, inp);
       G.step();
     }
@@ -158,13 +162,13 @@ function check(name, ok, detail) {
     G.loadLevel(0);
     Object.assign(G.input, none, { gas: true });
     for (let i = 0; i < 40; i++) G.step();
-    const fast = s.bike.chassis.velocity.x;
+    const fast = Game.bikeVel().x / CONFIG.pixelsPerMetre;
     Object.assign(G.input, none, { brake: true });
     for (let i = 0; i < 40; i++) G.step();
-    const braked = s.bike.chassis.velocity.x;
+    const braked = Game.bikeVel().x / CONFIG.pixelsPerMetre;
     // Reverse: keep holding brake once stopped
     for (let i = 0; i < 120; i++) G.step();
-    const reversing = s.bike.chassis.velocity.x;
+    const reversing = Game.bikeVel().x / CONFIG.pixelsPerMetre;
     // Checkpoint respawn: pass the checkpoint, then crash
     const cp = s.level.checkpoints[0];
     G.spawnBike({ x: cp.x + 100, y: cp.y });
@@ -173,22 +177,22 @@ function check(name, ok, detail) {
     const reachedCp = s.checkpointIndex;
     G.spawnBike({ x: cp.x + 300, y: cp.y - 300 });
     for (let i = 0; i < 300 && s.mode === "playing"; i++) {
-      const raw = s.bike.chassis.angle;
-      Object.assign(G.input, none, raw < Math.PI - 0.2 ? { leanForward: true } : raw > Math.PI + 0.2 ? { leanBack: true } : {});
+      const e = s.bike.chassis.getAngle() + 0.35 * s.bike.chassis.getAngularVelocity();
+      Object.assign(G.input, none, e < Math.PI - 0.2 ? { leanForward: true } : e > Math.PI + 0.2 ? { leanBack: true } : {});
       G.step();
     }
     const crashedAfterCp = s.mode === "crashed";
     Object.assign(G.input, none);
     for (let i = 0; i < 70; i++) G.step();
-    const respawnX = s.bike.chassis.position.x;
+    const respawnX = Game.bikePos().x;
     s.paused = false;
     return { frontflips, flipCrashes, fast, braked, reversing, reachedCp, crashedAfterCp, respawnX, cpX: cp.x, mode: s.mode };
   });
   check("Frontflip is detected", extra.frontflips === 1 && extra.flipCrashes === 0,
     "frontflips " + extra.frontflips + ", crashes " + extra.flipCrashes);
   check("Brake slows the bike down", extra.braked < extra.fast * 0.5,
-    "speed " + extra.fast.toFixed(1) + " -> " + extra.braked.toFixed(1));
-  check("Holding brake when stopped reverses", extra.reversing < -0.5, "speed " + extra.reversing.toFixed(1));
+    "speed " + extra.fast.toFixed(1) + " -> " + extra.braked.toFixed(1) + " m/s");
+  check("Holding brake when stopped reverses", extra.reversing < -0.5, "speed " + extra.reversing.toFixed(1) + " m/s");
   check("Crash after the checkpoint respawns at the checkpoint",
     extra.reachedCp === 0 && extra.crashedAfterCp && Math.abs(extra.respawnX - extra.cpX) < 60 && extra.mode === "playing",
     "respawned at x " + Math.round(extra.respawnX) + " (checkpoint " + extra.cpX + ")");

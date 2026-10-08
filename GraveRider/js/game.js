@@ -2,20 +2,14 @@
 // GRAVE RIDER — GAME LOOP, CAMERA, INPUT, HUD
 // =====================================================
 var Game = (function () {
-  var Engine = Matter.Engine,
-      Bodies = Matter.Bodies,
-      Composite = Matter.Composite,
-      Vertices = Matter.Vertices;
+  var Vec2 = planck.Vec2;
+  var PPM = CONFIG.pixelsPerMetre; // pixels per metre
 
   var canvas = document.getElementById("game");
   var ctx = canvas.getContext("2d");
   var viewW = 0, viewH = 0;
 
-  var engine = Engine.create({
-    positionIterations: 10,
-    velocityIterations: 8,
-    constraintIterations: 4
-  });
+  var world = planck.World({ gravity: Vec2(0, 9.81) });
 
   // Everything about the current run lives in "state"
   var state = {
@@ -43,46 +37,34 @@ var Game = (function () {
     paused: false
   };
 
+  var STEP_MS = CONFIG.physicsStepSec * 1000;
   var input = { gas: false, brake: false, leanBack: false, leanForward: false };
   var camera = { x: 0, y: 0, look: 0 };
 
   // ---------------------------------------------------
   // LEVEL LOADING
   // ---------------------------------------------------
+  // Level data is in pixels; physics is in metres
   function buildTerrain(level) {
-    var bodies = [];
+    var ground = world.createBody({ type: "static", userData: "ground" });
     level.terrain.forEach(function (piece) {
       // A piece is either a list of points, or { points, solidAbove }
-      // (solidAbove = the ground is ABOVE the line, for ceilings)
-      var pts = piece.points || piece;
-      var above = !!piece.solidAbove;
-      for (var i = 0; i < pts.length - 1; i++) {
-        var a = pts[i], b = pts[i + 1];
-        var edge = above ? Math.min(a.y, b.y) - 120 : Math.max(a.y, b.y) + 120;
-        var verts = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }, { x: b.x, y: edge }, { x: a.x, y: edge }];
-        var centre = Vertices.centre(verts);
-        var body = Bodies.fromVertices(centre.x, centre.y, [verts], {
-          isStatic: true,
-          friction: 1,
-          frictionStatic: 1,
-          restitution: 0,
-          label: "ground"
-        });
-        bodies.push(body);
-      }
+      // (solidAbove = the ground is ABOVE the line, for ceilings; only
+      // changes how it is drawn - the physics surface is the line itself)
+      var pts = (piece.points || piece).map(function (p) { return Vec2(p.x / PPM, p.y / PPM); });
+      ground.createFixture({ shape: planck.Chain(pts, false), friction: 1, restitution: 0 });
     });
-    return bodies;
   }
 
   function loadLevel(index) {
-    Composite.clear(engine.world, false, true);
-    engine.pairs.list.length = 0;
-    engine.pairs.table = {};
+    // Remove everything from the old level
+    for (var b = world.getBodyList(); b; ) { var next = b.getNext(); world.destroyBody(b); b = next; }
+    state.bike = null;
 
     var level = LEVELS[index];
     state.levelIndex = index;
     state.level = level;
-    Composite.add(engine.world, buildTerrain(level));
+    buildTerrain(level);
 
     state.mode = "playing";
     state.timeMs = 0;
@@ -96,9 +78,10 @@ var Game = (function () {
     spawnBike(level.start);
   }
 
+  // at = { x, y } in level pixels
   function spawnBike(at) {
-    if (state.bike) Bike.remove(engine, state.bike);
-    state.bike = Bike.create(engine, at.x, at.y);
+    if (state.bike) Bike.remove(world, state.bike);
+    state.bike = Bike.create(world, at.x / PPM, at.y / PPM);
     state.airSteps = 0;
     state.pendingFlip = null;
     state.crashTimerMs = 0;
@@ -106,6 +89,16 @@ var Game = (function () {
     camera.x = at.x;
     camera.y = at.y;
     camera.look = 0;
+  }
+
+  // Bike position and speed in level pixels
+  function bikePos() {
+    var p = state.bike.chassis.getPosition();
+    return { x: p.x * PPM, y: p.y * PPM };
+  }
+  function bikeVel() {
+    var v = state.bike.chassis.getLinearVelocity();
+    return { x: v.x * PPM, y: v.y * PPM };
   }
 
   // ---------------------------------------------------
@@ -124,15 +117,14 @@ var Game = (function () {
 
   function updatePhysics() {
     var level = state.level, bike = state.bike;
-    var zone = findZone(level, bike.chassis.position);
+    var zone = findZone(level, bikePos());
     var p = Object.assign({}, PHYSICS_DEFAULTS, level.physics || {}, zone ? zone.physics : {});
     state.zone = zone;
     state.physics = p;
 
     var len = Math.hypot(p.gravityDir.x, p.gravityDir.y) || 1;
-    engine.gravity.x = p.gravityDir.x / len;
-    engine.gravity.y = p.gravityDir.y / len;
-    engine.gravity.scale = 0.001 * CONFIG.gravity * p.gravityScale;
+    state.gravity = 9.81 * CONFIG.gravity * p.gravityScale; // m/s²
+    world.setGravity(Vec2(p.gravityDir.x / len * state.gravity, p.gravityDir.y / len * state.gravity));
     Bike.applyTuning(bike, p.friction, p.bounce);
   }
 
@@ -140,23 +132,21 @@ var Game = (function () {
   // ONE FIXED PHYSICS STEP
   // ---------------------------------------------------
   function step() {
-    var dt = CONFIG.physicsStepMs;
+    var dt = STEP_MS;
     var bike = state.bike;
     state.steps++;
 
     updatePhysics();
-    Bike.dampSprings(bike);
+    Bike.suspension(bike);
     if (state.mode === "playing") Bike.control(bike, input);
-    Bike.limitSpeed(bike);
-    Engine.update(engine, dt);
-    Bike.limitTravel(bike);
-    Bike.updateContacts(bike, engine);
+    world.step(CONFIG.physicsStepSec, 10, 8);
+    Bike.updateContacts(bike);
 
     if (state.mode === "playing") {
       state.timeMs += dt;
       trackFlips();
       checkProgress();
-      if (bike.headHit || isFallen()) crash();
+      if (bike.riderHit || isFallen()) crash();
     } else if (state.mode === "crashed") {
       state.crashTimerMs += dt;
       if (state.crashTimerMs >= CONFIG.crashRestartDelayMs) {
@@ -171,7 +161,7 @@ var Game = (function () {
   }
 
   function isFallen() {
-    var y = state.bike.chassis.position.y, level = state.level;
+    var y = bikePos().y, level = state.level;
     if (level.fallLimitY !== undefined && y > level.fallLimitY) return true;
     if (level.fallLimitTopY !== undefined && y < level.fallLimitTopY) return true;
     return false;
@@ -182,7 +172,7 @@ var Game = (function () {
     state.crashTimerMs = 0;
     state.crashes++;
     state.pendingFlip = null; // a crash cancels a flip you just landed
-    state.bike.head.isSensor = false; // the rider now lands on the ground instead of sinking in
+    Bike.letGo(state.bike); // the rider falls off the bike
     popup("CRASH!", "#ff4d4d");
   }
 
@@ -195,7 +185,7 @@ var Game = (function () {
 
   function trackFlips() {
     var bike = state.bike;
-    var angle = bike.chassis.angle;
+    var angle = bike.chassis.getAngle();
 
     // A landed flip only counts if you don't crash in the next moment
     if (state.pendingFlip) {
@@ -248,7 +238,7 @@ var Game = (function () {
   // CHECKPOINTS AND FINISH
   // ---------------------------------------------------
   function checkProgress() {
-    var level = state.level, x = state.bike.chassis.position.x;
+    var level = state.level, x = bikePos().x;
     for (var i = state.checkpointIndex + 1; i < level.checkpoints.length; i++) {
       if (x >= level.checkpoints[i].x) {
         state.checkpointIndex = i;
@@ -295,13 +285,13 @@ var Game = (function () {
   // CAMERA
   // ---------------------------------------------------
   function updateCamera() {
-    var c = state.bike.chassis;
+    var p = bikePos(), vel = bikeVel();
     var targetLook = Math.max(-CONFIG.cameraMaxLookAhead,
-      Math.min(CONFIG.cameraMaxLookAhead, c.velocity.x * CONFIG.cameraLookAhead));
+      Math.min(CONFIG.cameraMaxLookAhead, vel.x * CONFIG.cameraLookAhead));
     camera.look += (targetLook - camera.look) * 0.03;
     var s = CONFIG.cameraSmoothing;
-    camera.x += (c.position.x + camera.look - camera.x) * s;
-    camera.y += (c.position.y - camera.y) * s;
+    camera.x += (p.x + camera.look - camera.x) * s;
+    camera.y += (p.y - camera.y) * s;
   }
 
   // ---------------------------------------------------
@@ -315,6 +305,14 @@ var Game = (function () {
     for (var i = 0; i < 160; i++) stars.push({ x: rnd() * 4000, y: rnd() * 1000, r: rnd() * 1.6 + 0.4 });
   })();
 
+  // Ground texture (a picture that repeats)
+  var dirtImg = new Image(), dirtFill = null;
+  dirtImg.src = ART.dirt;
+  function dirtPattern() {
+    if (!dirtFill && dirtImg.complete && dirtImg.naturalWidth > 0) dirtFill = ctx.createPattern(dirtImg, "repeat");
+    return dirtFill;
+  }
+
   function resize() {
     var dpr = window.devicePixelRatio || 1;
     viewW = window.innerWidth;
@@ -327,7 +325,7 @@ var Game = (function () {
   }
   window.addEventListener("resize", resize);
 
-  function worldScale() { return viewH / 760; }
+  function worldScale() { return viewH / 560; }
 
   function drawBackground() {
     var g = ctx.createLinearGradient(0, 0, 0, viewH);
@@ -387,18 +385,25 @@ var Game = (function () {
     level.terrain.forEach(function (piece) {
       var pts = piece.points || piece;
       var edge = piece.solidAbove ? -5000 : 5000;
-      ctx.fillStyle = level.groundColor;
       ctx.beginPath();
       ctx.moveTo(pts[0].x, edge);
       pts.forEach(function (p) { ctx.lineTo(p.x, p.y); });
       ctx.lineTo(pts[pts.length - 1].x, edge);
       ctx.closePath();
+      ctx.fillStyle = level.groundColor;
       ctx.fill();
-      ctx.strokeStyle = level.groundTopColor;
-      ctx.lineWidth = 6;
+      var dirt = dirtPattern();
+      if (dirt) { ctx.fillStyle = dirt; ctx.fill(); }
+      // Packed, darker dirt along the riding surface, with a lighter top edge
       ctx.lineJoin = "round";
+      ctx.lineCap = "round";
       ctx.beginPath();
       pts.forEach(function (p, i) { if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+      ctx.strokeStyle = "rgba(20, 12, 8, 0.55)";
+      ctx.lineWidth = 22;
+      ctx.stroke();
+      ctx.strokeStyle = level.groundTopColor;
+      ctx.lineWidth = 4;
       ctx.stroke();
     });
 
@@ -422,7 +427,11 @@ var Game = (function () {
       }
     }
 
+    // The bike is drawn in metres
+    ctx.save();
+    ctx.scale(PPM, PPM);
     Bike.draw(ctx, state.bike);
+    ctx.restore();
     ctx.restore();
   }
 
@@ -515,9 +524,9 @@ var Game = (function () {
     lastTime = now;
     var steps = 0;
     if (state.paused) accumulator = 0; // tests can pause and step by hand
-    while (accumulator >= CONFIG.physicsStepMs && steps < 10) {
+    while (accumulator >= STEP_MS && steps < 10) {
       step();
-      accumulator -= CONFIG.physicsStepMs;
+      accumulator -= STEP_MS;
       steps++;
     }
     updateCamera();
@@ -528,11 +537,12 @@ var Game = (function () {
   }
 
   resize();
+  Bike.loadArt();
   loadLevel(0);
   requestAnimationFrame(frame);
 
   // Exposed so the tuning panel and automated tests can read the game
-  return { state: state, input: input, engine: engine, step: step, loadLevel: loadLevel, spawnBike: spawnBike, camera: camera };
+  return { state: state, input: input, world: world, step: step, bikePos: bikePos, bikeVel: bikeVel, loadLevel: loadLevel, spawnBike: spawnBike, camera: camera };
 })();
 
 // =====================================================
@@ -541,11 +551,11 @@ var Game = (function () {
 var Tuning = (function () {
   // Slider list: which CONFIG value, its name, and its range
   var SLIDERS = [
-    { key: "gravity", label: "Gravity", min: 0.2, max: 2.5, step: 0.05 },
-    { key: "enginePower", label: "Engine power", min: 0.01, max: 0.12, step: 0.005 },
-    { key: "leanStrength", label: "Lean strength", min: 0.002, max: 0.025, step: 0.0005 },
-    { key: "suspensionStiffness", label: "Suspension stiffness", min: 0.02, max: 0.4, step: 0.01 },
-    { key: "wheelGrip", label: "Wheel grip", min: 0.1, max: 2, step: 0.05 }
+    { key: "gravity", label: "Gravity (1 = Earth)", min: 0.2, max: 2.5, step: 0.05 },
+    { key: "enginePower", label: "Engine power (N·m)", min: 100, max: 1000, step: 10 },
+    { key: "leanStrength", label: "Lean strength (N·m)", min: 200, max: 3000, step: 50 },
+    { key: "suspensionStiffness", label: "Suspension stiffness (Hz)", min: 1.5, max: 8, step: 0.1 },
+    { key: "wheelGrip", label: "Wheel grip", min: 0.2, max: 2, step: 0.05 }
   ];
 
   var panel = document.getElementById("tuning");
