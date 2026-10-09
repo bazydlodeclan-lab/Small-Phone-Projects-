@@ -37,7 +37,8 @@ const ROOT = path.join(__dirname, "..");
     function settle(n) { Object.assign(G.input, none); for (let i = 0; i < (n || 90); i++) G.step(); }
     function run(inp, steps, every) {
       Object.assign(G.input, none, inp);
-      for (let i = 0; i < steps; i++) { G.step(); if (every) every(i); if (s.mode !== "playing") break; }
+      // (the clock waits in "ready" until a control is pressed; stop on a crash)
+      for (let i = 0; i < steps; i++) { G.step(); if (every) every(i); if (s.mode === "crashed" || s.mode === "finished") break; }
     }
     const out = {};
 
@@ -46,12 +47,13 @@ const ROOT = path.join(__dirname, "..");
     out.sag = { rear: Bike.compression(s.bike.rear), front: Bike.compression(s.bike.front) };
 
     // ---- 2. Acceleration on flat ground, holding full throttle ----
-    function accel(throttleControl) {
+    function accel(throttleControl, leanFirst) {
       reset(); CONFIG.throttleControl = throttleControl;
       track([[-50, 0], [3000, 0]], 0); settle(60);
+      if (leanFirst) run({ leanForward: true }, 36); // shift weight forward first (about 0.35 s for a real rider)
       const r = { t50: null, t100: null, maxPitch: 0, crashed: false, topSpeed: 0 };
       const x0 = pos().x; let t = 0;
-      run({ gas: true }, 60 * 30, () => {
+      run({ gas: true, leanForward: !!leanFirst }, 60 * 30, () => {
         t += DT; const v = speed() * 3.6;
         if (r.t50 === null && v >= 50) r.t50 = t;
         if (r.t100 === null && v >= 100) r.t100 = t;
@@ -62,13 +64,15 @@ const ROOT = path.join(__dirname, "..");
       r.crashed = s.mode === "crashed"; r.time = t;
       return r;
     }
-    out.accel = accel(1);
-    out.accelRaw = accel(0);
+    out.accelLean = accel(0, true);
+    out.accelRaw = accel(0, false);
+    out.accel = accel(1, false);
 
     // ---- 3. Braking from 60 km/h ----
     reset(); track([[-50, 0], [3000, 0]], 0); settle(60);
+    run({ leanForward: true }, 36);
     for (let i = 0; i < 60 * 20 && speed() * 3.6 < 60; i++) {
-      Object.assign(G.input, none, { gas: true, leanForward: pitchDeg() > 8 }); G.step();
+      Object.assign(G.input, none, { gas: pitchDeg() < 10, leanForward: true }); G.step();
     }
     { const x0 = pos().x; let t = 0;
       Object.assign(G.input, none, { brake: true });
@@ -94,16 +98,21 @@ const ROOT = path.join(__dirname, "..");
       });
       b.rear.wheel.setAngularVelocity(v0 / CONFIG.rearWheelRadius);
       b.front.wheel.setAngularVelocity(v0 / CONFIG.frontWheelRadius);
+      // the rider is already leaning forward (as a real rider coming into a hill)
+      const peg = b.hips.getAnchorA(), lean = CONFIG.riderLeanForward, rp = b.rider.getPosition();
+      const dx = rp.x - peg.x, dy = rp.y - peg.y;
+      b.rider.setTransform(planck.Vec2(peg.x + dx * Math.cos(lean) - dy * Math.sin(lean), peg.y + dx * Math.sin(lean) + dy * Math.cos(lean)), b.rider.getAngle() + lean);
       const along = () => { const v = s.bike.chassis.getLinearVelocity(); return (v.x - v.y * t) / Math.sqrt(1 + t * t); };
       const y0 = pos().y; let best = 0, tt = 0;
-      while (tt < 6 && s.mode === "playing") {
-        Object.assign(G.input, none, { gas: true, leanForward: pitchDeg() - deg > 10 });
+      while (tt < 6 && s.mode !== "crashed") {
+        Object.assign(G.input, none, { gas: true, leanForward: true }); // rider stays leaned forward
         G.step(); tt += DT;
         best = Math.max(best, pos().y - y0);
       }
       const vEnd = along() * 3.6;
-      return { deg, runUpKmh, made: s.mode === "playing" && vEnd > 1, crashed: s.mode !== "playing",
-        topSpeed: s.mode === "playing" ? vEnd : null, height: best, time: tt };
+      const crashed = s.mode === "crashed";
+      return { deg, runUpKmh, made: !crashed && vEnd > 1, crashed,
+        topSpeed: crashed ? null : vEnd, height: best, time: tt };
     }
     out.hills = [];
     [15, 20, 25, 30, 35, 40, 45, 50].forEach(d => { out.hills.push(hill(d, 0)); out.hills.push(hill(d, 50)); });
@@ -143,7 +152,27 @@ const ROOT = path.join(__dirname, "..");
     out.airWheel = { brake: airWheel({ brake: true }), throttleRaw: airWheel({ gas: true }, true),
       throttleRider: airWheel({ gas: true }, false) };
 
-    // ---- 7. Drops onto flat ground (bike level, rider standing) ----
+    // ---- 7. Reversing up a slope (bike facing downhill, holding brake) ----
+    function reverseUp(deg) {
+      reset();
+      const t = Math.tan(deg * Math.PI / 180);
+      LEVELS[9] = { name: "lab", physics: {}, groundColor: "#000", groundTopColor: "#000",
+        start: { x: 20 * PPM, y: (20 * t - 0.95) * PPM }, checkpoints: [], finish: { x: 1e9 }, fallLimitY: 1e9,
+        terrain: [[{ x: -100 * PPM, y: -100 * t * PPM }, { x: 100 * PPM, y: 100 * t * PPM }]], zones: [] };
+      G.loadLevel(9);
+      const b = s.bike, c = b.chassis.getPosition(), ang = Math.atan(t);
+      [b.chassis, b.rider, b.rear.wheel, b.front.wheel].forEach(body => {
+        const p = body.getPosition(), dx = p.x - c.x, dy = p.y - c.y;
+        body.setTransform(planck.Vec2(c.x + dx * Math.cos(ang) - dy * Math.sin(ang), c.y + dx * Math.sin(ang) + dy * Math.cos(ang)), body.getAngle() + ang);
+      });
+      settle(30);
+      const y0 = pos().y;
+      run({ brake: true }, 240);
+      return { deg, climbed: pos().y - y0 };
+    }
+    out.reverse = [5, 10, 15, 20].map(reverseUp);
+
+    // ---- 8. Drops onto flat ground (bike level, rider standing) ----
     function drop(hm) {
       reset(); track([[-50, 0], [500, 0]], 0);
       G.spawnBike({ x: 0, y: -(hm + 0.66) * PPM });
@@ -191,28 +220,39 @@ const ROOT = path.join(__dirname, "..");
 
   L.push("## Acceleration (flat ground, full throttle)", "");
   L.push("| | 0–50 km/h | 0–100 km/h | Distance in 5 s | Highest wheelie | Top speed reached | Flipped over? |", "|---|---|---|---|---|---|---|");
-  [["With rider throttle control (game default)", R.accel], ["Throttle pinned, no rider control", R.accelRaw]].forEach(([n, a]) =>
+  [["Real life (game default): rider leans forward first", R.accelLean], ["Real life: neutral stance, throttle pinned", R.accelRaw],
+   ["Rider throttle help = 1 (T panel)", R.accel]].forEach(([n, a]) =>
     L.push(`| ${n} | ${a.t50 == null ? "—" : f1(a.t50) + " s"} | ${a.t100 == null ? "—" : f1(a.t100) + " s"} | ${a.dist5 == null ? "—" : f0(a.dist5) + " m"} | ${f0(a.maxPitch)}° | ${f0(a.topSpeed)} km/h | ${a.crashed ? "yes, after " + f1(a.time) + " s" : "no"} |`));
-  L.push("", `Steady top speed on flat ground from power vs drag: ${(powerSpeed(0) * 3.6).toFixed(0)} km/h (capped by the motor's max speed).`, "");
+  L.push("", `Steady top speed on flat ground from power vs drag: ${(powerSpeed(0) * 3.6).toFixed(0)} km/h (capped by the motor's max speed).`);
+  L.push("Why leaning forward matters: the front starts to lift when grip nears (distance from the rear tyre to the centre");
+  L.push("of mass ÷ its height): about 0.87 neutral, about 1.0 leaning forward. Grip is " + C.wheelGrip + ". As the front unloads the fork");
+  L.push("extends and tips the nose up further, so neutral at full throttle it keeps coming up; leaned forward the tyre spins");
+  L.push("(traction control) instead.");
+  L.push("Leaning has to come first: a real rider needs about 0.35 s to shift their weight.", "");
 
   L.push("## Braking from 60 km/h (front + rear)", "");
   L.push(`- Stops in **${f1(R.brake.dist)} m** and **${f1(R.brake.time)} s**.`, "");
 
-  L.push("## Hill climbing (long straight slope, full throttle for 6 s, rider keeping the front down)", "");
+  L.push("## Hill climbing (long straight slope, full throttle for 6 s, rider leaning forward the whole time)", "");
   L.push("| Slope | Start speed | Still climbing after 6 s? | Height gained | Speed after 6 s | Max steady speed if grip were unlimited (power limit) |", "|---|---|---|---|---|---|");
   R.hills.forEach(h => L.push(`| ${h.deg}° | ${h.runUpKmh ? h.runUpKmh + " km/h" : "standstill"} | ${h.made ? "yes" : (h.crashed ? "no — loops over / crashes" : "no — stops and slides back")} | ${h.height.toFixed(1)} m | ${h.topSpeed == null ? "—" : f0(Math.max(0, h.topSpeed)) + " km/h"} | ${(powerSpeed(h.deg) * 3.6).toFixed(0)} km/h |`));
   L.push("", "With 50 km/h of run-up the bike also carries momentum: speed alone is worth about 10 m of height.");
   L.push("");
 
+  L.push("## Reversing up a hill (facing downhill, holding brake for 4 s)", "");
+  L.push("| Slope | Height gained |", "|---|---|");
+  R.reverse.forEach(r => L.push(`| ${r.deg}° | ${r.climbed.toFixed(1)} m |`));
+  L.push("", "Facing downhill most of the weight is on the front wheel, so the driven rear tyre spins on steeper slopes.", "");
+
   L.push("## How much leaning actually does (in the air, 1 second)", "");
   L.push(`- **Real life (flip assist 0):** leaning back for 1 s turns the bike **${f0(Math.abs(R.lean.realBack.deg))}° nose-up**; leaning forward **${f0(Math.abs(R.lean.realFwd.deg))}° nose-down**.`);
   L.push("  The rider and bike turn against each other (angular momentum is conserved), so a weight shift alone");
   L.push("  can't flip the bike. Real backflips come from the take-off ramp and the throttle/brake.");
-  L.push(`- **Game default (flip assist ${C.flipAssist} N·m):** leaning back for 1 s turns the bike **${f0(Math.abs(R.lean.assistBack.deg))}°** (almost a full backflip).`, "");
+  L.push(`- **Game default (flip assist ${C.flipAssist} N·m, in the air only):** leaning back for 1 s turns the bike **${f0(Math.abs(R.lean.assistBack.deg))}°**.`, "");
   L.push("## Throttle and brake in the air (0.5 s, leaving a jump at 40 km/h)", "");
   L.push(`- Rear brake: nose drops **${f0(-R.airWheel.brake)}°** (the spinning wheel's momentum moves into the bike).`);
   L.push(`- Throttle pinned: nose rises **${f0(R.airWheel.throttleRaw)}°** (real riders use this to lift the front).`);
-  L.push(`- Throttle with rider control (game default): nose moves **${f0(Math.abs(R.airWheel.throttleRider))}°** (the rider holds the throttle steady in the air).`, "");
+  L.push(`- Throttle with rider throttle help = 1: nose moves **${f0(Math.abs(R.airWheel.throttleRider))}°** (the rider holds the throttle steady in the air).`, "");
   fs.writeFileSync(path.join(ROOT, "PHYSICS_REPORT.md"), L.join("\n") + "\n");
   console.log(L.join("\n"));
 })();

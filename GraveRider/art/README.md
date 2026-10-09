@@ -18,7 +18,7 @@ just look sharper. All sizes are side views with the bike **facing right**.
 | `bike.svg` | 2.20 m × 1.10 m | 2 : 1 (e.g. 880 × 440 px) | Electric motocross bike: frame, battery, motor, seat, plastics. **No wheels, no fork legs, no swingarm** (the game draws those because they move). Drawn with the suspension fully extended. | Bike origin at 50% across, 68% down. Rear axle at 17% / 95%. Front axle at 85% / 95%. Handlebar grip at 63% / 21%. Footpeg at 46% / 88%. Fork top at 67% / 26%. |
 | `wheel.svg` | 0.696 m × 0.696 m | 1 : 1 (e.g. 300 × 300 px) | Front wheel (21" rim, 90/90-21 tyre). It spins. | Axle exactly in the middle. Tyre touching the edges. |
 | `rear-wheel.svg` | 0.682 m × 0.682 m | 1 : 1 (e.g. 300 × 300 px) | Rear wheel (18" rim, 140/80-18 tyre, sprocket). It spins. | Axle exactly in the middle. Tyre touching the edges. |
-| `rider.svg` | 0.75 m × 1.47 m | about 1 : 2 (e.g. 225 × 441 px) | Rider **without arms** (the game draws the arms reaching to the handlebar). | Boot on the footpeg at 60% across / 97% down. Shoulder at 60% / 27%. Head centre at 71% / 12%. |
+| `rider.svg` | 0.85 m × 1.67 m (6 ft rider) | about 1 : 2 (e.g. 225 × 441 px) | Rider **without arms** (the game draws the arms reaching to the handlebar). | Boot on the footpeg at 60% across / 97% down. Shoulder at 60% / 27%. Head centre at 71% / 12%. |
 | `dirt.svg` | repeats | square (e.g. 128 × 128 px) | Ground texture. | Left/right and top/bottom edges must match so it tiles without seams. |
 
 ## Tips

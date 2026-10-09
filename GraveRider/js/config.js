@@ -25,8 +25,9 @@ var CONFIG = {
   motorPower: 60000,         // slider: peak power in watts — 80 hp [SPEC]
   wheelTorque: 978,          // peak torque at the rear wheel, N·m [SPEC: MX 1.2 table; older pages say 938]
   topSpeed: 40.3,            // m/s (145 km/h / 90 mph) with stock gearing [MEASURED: one hands-on test]
-  reverseSpeed: 2,           // m/s — the real bike has no reverse; this is the rider walking it back
-  drivetrainInertia: 3.2,    // rear wheel + motor spinning inertia at the wheel, kg·m² [ESTIMATE]
+  reverseSpeed: 4,           // m/s top speed backwards (hold brake once stopped) [GAME CHOICE]
+  reverseTorque: 500,        // N·m at the rear wheel when reversing: enough to back up a steep hill [GAME CHOICE]
+  drivetrainInertia: 0.8,    // rear wheel + tyre + sprocket (+ a little motor) spinning inertia, kg·m² [ESTIMATE: wheel ≈ 0.7]
 
   // --- Brakes (rider uses front + rear together) ---
   frontBrakeTorque: 1000,    // 260 mm disc, 2-piston caliper, N·m [ESTIMATE from disc size]
@@ -36,28 +37,32 @@ var CONFIG = {
   dragArea: 0.55,            // drag coefficient × frontal area, bike + standing rider, m² [ESTIMATE]
   rollingResistance: 0.03,   // knobby tyres on dirt [ESTIMATE]
 
-  // --- Rider throttle + brake control ---
-  // A real rider feathers the throttle in a wheelie, holds it steady in the
-  // air, and eases the front brake if the back wheel starts lifting. A key
-  // is only on/off, so the game does this for you: power eases off as a
-  // wheelie gets too steep, in the air the rear wheel only keeps pace with
-  // the bike's speed, and the front brake eases off before an "endo".
-  // Set to 0 to turn this off (much easier to loop out or go over the bars).
-  throttleControl: 1,
-  wheelieLimit: 0.5,         // wheelie angle (radians, about 29°) where the rider backs off fully
-  maxWheelspin: 3,           // m/s the rear tyre may spin faster than the bike before the rider rolls off
+  // --- Throttle ---
+  // Traction control (the real bike has it): cuts power when the rear tyre
+  // spins too much faster than the bike is moving.
+  tractionControl: true,
+  maxWheelspin: 3,           // m/s the rear tyre may spin faster than the bike [ESTIMATE]
+  // Rider throttle help (slider, 0..1). A key is only on/off, so this eases
+  // the throttle for you when the front wheel comes up too high, and holds it
+  // steady in the air. 0 = real life: full throttle without leaning forward
+  // loops the bike out, just like the real thing. 1 = full help.
+  throttleControl: 0,
+  wheelieLimit: 0.5,         // wheelie angle (radians, about 29°) where full help backs off completely
 
   // --- Leaning ---
   // Real physics: the rider shifting their weight on the pegs moves the bike
-  // only a little in the air (angular momentum is conserved).
-  // flipAssist adds extra turning so flips are possible in a game.
-  // flipAssist = 0 is fully realistic.
-  flipAssist: 1400,          // slider: extra turning force (N·m); 0 = real life
-  groundLeanFactor: 0.45,    // flip assist on the ground is this fraction of in the air
-  maxSpinSpeed: 7,           // assist stops adding spin above this (radians/sec)
-  riderLeanAngle: 0.35,      // how far the rider leans back/forward at the hips (radians)
+  // only a little in the air (angular momentum is conserved). Leaning
+  // forward on the ground keeps the front wheel down (real weight shift).
+  // flipAssist adds a little extra turning IN THE AIR ONLY so flips are
+  // possible in a game. flipAssist = 0 is fully realistic.
+  flipAssist: 250,           // slider: extra turning force in the air (N·m); 0 = real life
+  maxSpinSpeed: 4,           // assist stops adding spin above this (radians/sec; one backflip needs about 3)
+  // A real rider can move their weight about 0.17 m forward (chest over the
+  // bars) and 0.20 m back (hanging off the back) [ESTIMATE: body-segment model]
+  riderLeanForward: 0.20,    // radians at the pegs (0.20 × 0.84 m = 0.17 m)
+  riderLeanBack: 0.24,       // radians (0.24 × 0.84 m = 0.20 m)
   riderStrength: 4000,       // how firmly the rider holds their position (N·m) [ESTIMATE]
-  riderLeanSpeed: 2,         // how fast the rider shifts their weight (radians/sec) [ESTIMATE]
+  riderLeanSpeed: 0.8,       // weight shift speed: neutral to full lean in about 0.35 s [ESTIMATE]
 
   // --- Suspension (KYB 48 mm fork + KYB shock) ---
   frontTravel: 0.310,        // fork travel, m [SPEC]
@@ -70,9 +75,10 @@ var CONFIG = {
   rearDamping: 0.6,          // [ESTIMATE]
   suspensionStiffness: 1.0,  // slider: multiplies both spring rates (1 = stock)
   bottomingStiffness: 8,     // last 15% of travel is this many times stiffer [ESTIMATE]
+  antiSquat: 1.0,            // share of the accelerating weight shift the chain + swingarm hold up (1 = 100%) [ESTIMATE: typical MX]
 
   // --- Tyres (90/90-21 front, 140/80-18 rear) ---
-  wheelGrip: 1.0,            // slider: knobby tyre on loose dirt [ESTIMATE]
+  wheelGrip: 0.85,           // slider: friction coefficient, knobby tyre on packed dirt [ESTIMATE: 0.8-1.0]
   frontWheelRadius: 0.348,   // from tyre size 90/90-21 [SPEC → calculated]
   rearWheelRadius: 0.341,    // from tyre size 140/80-18 [SPEC → calculated]
 
@@ -80,7 +86,7 @@ var CONFIG = {
   bikeMass: 118,             // whole bike including wheels [SPEC]
   frontWheelMass: 9,         // wheel + tyre + disc [ESTIMATE]
   rearWheelMass: 13,         // wheel + tyre + disc + sprocket [ESTIMATE]
-  riderMass: 75,             // rider in full gear (change to your weight)
+  riderMass: 90,             // 6 ft, 180 lb (81.6 kg) rider + about 8.5 kg of MX gear [ESTIMATE: gear listings]
 
   // --- Camera ---
   cameraLookAhead: 0.45,     // how far the camera looks ahead (seconds of travel)
@@ -88,9 +94,10 @@ var CONFIG = {
   cameraSmoothing: 0.08,     // 0-1, higher = camera snaps faster
 
   // --- Gameplay ---
-  crashRestartDelayMs: 1000,
-  flipPoints: 500,           // points per full flip
-  flipLandingSlack: 0.5      // how far short of upright (radians) a flip still counts
+  crashRestartDelayMs: 1000, // after a crash you restart at the last checkpoint (the clock keeps running)
+  flipTimeBonus: 0.5,        // seconds taken off your time for each full flip
+  flipSlack: 0.5,            // a flip counts this far (radians, about 29°) short of a full turn
+  speedUnit: "mph"           // speedometer: "mph" or "km/h"
 };
 
 // Default copy of the slider values (used by the tuning panel's reset button)

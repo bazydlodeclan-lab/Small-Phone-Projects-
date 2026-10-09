@@ -34,10 +34,16 @@ var Bike = (function () {
     // collision outline of the bike body (for crashes / belly landings)
     body: [{ x: -0.55, y: -0.38 }, { x: 0.40, y: -0.48 }, { x: 0.50, y: -0.30 },
            { x: 0.25, y: 0.27 }, { x: -0.30, y: 0.27 }],
-    // rider body, relative to the footpeg
-    shoulder:   { x: 0.0, y: -1.02 },
-    head:       { x: 0.08, y: -1.24, r: 0.13 },
-    torso:      { x: -0.14, y: -0.84, hw: 0.12, hh: 0.25, angle: 0.58 }
+    // rider (6 ft / 1.83 m) standing in the attack position, relative to
+    // the footpeg. These shapes are only for crashes and drawing; the
+    // rider's weight is set separately (see riderMassData).
+    shoulder:   { x: 0.0, y: -1.16 },
+    head:       { x: 0.091, y: -1.41, r: 0.148 },
+    torso:      { x: -0.159, y: -0.955, hw: 0.136, hh: 0.284, angle: 0.58 },
+    // whole-body centre of mass in gear, legs included: 0.84 m above the
+    // pegs, over them [ESTIMATE: body-segment model, de Leva 1996 masses]
+    riderCentre: { x: 0.02, y: -0.84 },
+    riderInertia: 12.5      // pitch inertia about that point, kg·m² [ESTIMATE: same model]
   };
 
   function v(p) { return Vec2(p.x, p.y); }
@@ -111,18 +117,25 @@ var Bike = (function () {
     var pegPos = add(origin, GEO.footpeg);
     var rider = makeBody(world, "dynamic", pegPos, "rider");
     var T = GEO.torso, H = GEO.head;
-    var torsoArea = 4 * T.hw * T.hh, headArea = Math.PI * H.r * H.r;
-    var riderDensity = CONFIG.riderMass / (torsoArea + headArea);
     rider.createFixture({
-      shape: pl.Box(T.hw, T.hh, Vec2(T.x, T.y), T.angle), density: riderDensity,
+      shape: pl.Box(T.hw, T.hh, Vec2(T.x, T.y), T.angle), density: 1,
       friction: 0.6, filterGroupIndex: BIKE_GROUP, userData: "torso"
     });
     rider.createFixture({
-      shape: pl.Circle(Vec2(H.x, H.y), H.r), density: riderDensity,
+      shape: pl.Circle(Vec2(H.x, H.y), H.r), density: 1,
       friction: 0.6, filterGroupIndex: BIKE_GROUP, userData: "head"
     });
+    // The rider's real weight distribution (the shapes alone would leave out
+    // the legs and put the weight far too high). Planck wants the inertia
+    // about the body's origin (the footpeg), so add m × distance².
+    var rc = GEO.riderCentre;
+    rider.setMassData({
+      mass: CONFIG.riderMass, center: v(rc),
+      I: GEO.riderInertia + CONFIG.riderMass * (rc.x * rc.x + rc.y * rc.y)
+    });
+    // Hip limits: the furthest a rider can be thrown back or forward on the pegs
     var hips = world.createJoint(pl.RevoluteJoint({
-      enableLimit: true, lowerAngle: -0.6, upperAngle: 0.6,
+      enableLimit: true, lowerAngle: -0.35, upperAngle: 0.35,
       enableMotor: true, maxMotorTorque: CONFIG.riderStrength, motorSpeed: 0
     }, chassis, rider, pegPos));
 
@@ -139,7 +152,8 @@ var Bike = (function () {
       frontAir: 99,
       riderHit: false,
       crashed: false,
-      groundAngle: 0  // slope under the rear tyre (radians, 0 = flat)
+      groundAngle: 0, // slope under the rear tyre (radians, 0 = flat)
+      rearDrive: 0    // forward push of the ground on the rear tyre last step (N)
     };
     suspension(bike);
     return bike;
@@ -160,10 +174,14 @@ var Bike = (function () {
   }
 
   // --- Copy slider values (grip, bounce) onto the live bike ---
+  // Planck mixes the tyre's and the ground's friction as √(tyre × ground),
+  // and the ground is 1, so the tyre gets grip² to make the real friction
+  // coefficient exactly wheelGrip × the level's friction.
   function applyTuning(bike, surfaceFriction, bounce) {
+    var mu = CONFIG.wheelGrip * surfaceFriction;
     [bike.rear.wheel, bike.front.wheel].forEach(function (w) {
       var f = w.getFixtureList();
-      f.setFriction(CONFIG.wheelGrip * surfaceFriction);
+      f.setFriction(mu * mu);
       f.setRestitution(bounce);
     });
   }
@@ -184,14 +202,41 @@ var Bike = (function () {
       // Bottoming cushion: real forks (hydraulic cones) and shocks (bump
       // stops) get much stiffer in the last 15% of travel
       var deep = compression(s) - 0.85 * s.travel;
-      if (deep > 0) {
-        var push = CONFIG.bottomingStiffness * k * deep;
-        var dir = bike.chassis.getWorldVector(v(s.axis));
-        var at = s.wheel.getPosition();
-        s.wheel.applyForce(Vec2(dir.x * push, dir.y * push), at, true);
-        bike.chassis.applyForce(Vec2(-dir.x * push, -dir.y * push), at, true);
-      }
+      if (deep > 0) pushApart(bike, s, CONFIG.bottomingStiffness * k * deep);
     });
+
+    // Anti-squat: accelerating moves weight onto the rear wheel. On a real
+    // bike the chain pull and swingarm angle hold the rear up against this
+    // (otherwise the rear sinks and tips the nose up). This rear wheel slides
+    // on a straight line, so add that holding force along the shock.
+    if (bike.rearDrive > 0 && CONFIG.antiSquat > 0) {
+      var transfer = bike.rearDrive * comHeight(bike) / wheelbase(bike); // N moved onto the rear
+      pushApart(bike, bike.rear, CONFIG.antiSquat * transfer);
+    }
+  }
+
+  // Push a wheel out along its suspension line (and the frame the other way)
+  function pushApart(bike, s, force) {
+    var dir = bike.chassis.getWorldVector(v(s.axis));
+    var at = s.wheel.getPosition();
+    s.wheel.applyForce(Vec2(dir.x * force, dir.y * force), at, true);
+    bike.chassis.applyForce(Vec2(-dir.x * force, -dir.y * force), at, true);
+  }
+
+  function wheelbase(bike) {
+    var a = bike.rear.wheel.getPosition(), b = bike.front.wheel.getPosition();
+    return Math.hypot(b.x - a.x, b.y - a.y);
+  }
+
+  // Height of the bike + rider's centre of mass above the rear tyre's contact
+  function comHeight(bike) {
+    var m = 0, x = 0, y = 0;
+    [bike.chassis, bike.rider, bike.rear.wheel, bike.front.wheel].forEach(function (b) {
+      var c = b.getWorldCenter(), bm = b.getMass();
+      m += bm; x += c.x * bm; y += c.y * bm;
+    });
+    var up = bike.chassis.getWorldVector(Vec2(0, -1)), r = bike.rear.wheel.getPosition();
+    return (x / m - r.x) * up.x + (y / m - r.y) * up.y + bike.rear.radius;
   }
 
   // --- Air drag and rolling resistance. Called every step. ---
@@ -212,15 +257,19 @@ var Bike = (function () {
     });
   }
 
-  // --- Throttle control: like a real rider easing off the throttle when the
-  // front wheel comes up too high. Returns 0..1 (how much power to use).
-  function throttleControl(bike) {
-    if (!CONFIG.throttleControl || !bike.rearOnGround) return 1;
-    return wheelspinControl(bike) * wheelieControl(bike);
+  // --- How much of the motor's torque reaches the wheel right now (0..1) ---
+  //  1. Traction control (a feature of the real bike): cuts power when the
+  //     rear tyre spins too much faster than the bike is moving.
+  //  2. Rider throttle help (CONFIG.throttleControl, 0..1): eases the throttle
+  //     when the front wheel comes up too high. 0 = real life: hold full
+  //     throttle without leaning forward and the bike loops out.
+  function throttleFactor(bike) {
+    if (!bike.rearOnGround) return 1;
+    var f = CONFIG.tractionControl ? wheelspinControl(bike) : 1;
+    return f * (1 - CONFIG.throttleControl * (1 - wheelieControl(bike)));
   }
 
-  // Too much wheelspin on dirt = no grip. A rider rolls off until the tyre
-  // bites again (keeps the tyre surface within a few m/s of the bike's speed).
+  // Keeps the tyre surface within a few m/s of the bike's speed
   function wheelspinControl(bike) {
     var c = bike.chassis, vel = c.getLinearVelocity();
     var surface = (bike.rear.wheel.getAngularVelocity() - c.getAngularVelocity()) * bike.rear.radius;
@@ -239,17 +288,14 @@ var Bike = (function () {
     var noseUp = -Math.atan2(Math.sin(a), Math.cos(a));
     // Look a moment ahead: a fast-rising front wheel needs easing off sooner
     noseUp += Math.max(0, -bike.chassis.getAngularVelocity()) * 0.25;
-    // On an uphill the weight is already further back, so a rider allows
-    // less wheelie the steeper the hill
-    var uphill = Math.max(0, -bike.groundAngle);
-    var limit = Math.max(0.12, CONFIG.wheelieLimit - 0.8 * uphill);
-    var start = limit - 0.35;
+    var start = CONFIG.wheelieLimit - 0.35;
     if (noseUp <= start) return 1;
     return Math.max(0, 1 - (noseUp - start) / 0.35);
   }
 
   // --- Apply player controls. Called once per physics step. ---
-  // input: { gas, brake, leanBack, leanForward }
+  // input: { gas, brake, leanBack, leanForward, holdStill }
+  // holdStill = brake without ever reversing (start line, after the finish)
   function control(bike, input) {
     var c = bike.chassis;
     var vel = c.getLinearVelocity();
@@ -264,29 +310,30 @@ var Bike = (function () {
       var wheelSpin = Math.abs(bike.rear.wheel.getAngularVelocity() - c.getAngularVelocity());
       var torque = Math.min(CONFIG.wheelTorque, CONFIG.motorPower / Math.max(wheelSpin, 1));
       var targetSpin = CONFIG.topSpeed / Rr;
-      // In the air a real rider holds the throttle steady instead of pinning
-      // it, so the wheel keeps matching the bike's speed (a racing wheel would
-      // twist the bike over backwards). Part of throttle control.
-      if (CONFIG.throttleControl && bike.rearAir > 5 && bike.frontAir > 5) {
-        targetSpin = Math.min(targetSpin, Math.hypot(vel.x, vel.y) / Rr);
+      // Throttle help in the air: the rider holds the throttle steady instead
+      // of pinning it, so the wheel keeps pace with the bike (a racing wheel
+      // twists the bike nose-up). 0 = real life, full throttle in the air.
+      if (CONFIG.throttleControl > 0 && bike.rearAir > 5 && bike.frontAir > 5) {
+        var matched = Math.min(targetSpin, Math.hypot(vel.x, vel.y) / Rr);
+        targetSpin += (matched - targetSpin) * Math.min(1, CONFIG.throttleControl);
       }
       rearJ.enableMotor(true);
       rearJ.setMotorSpeed(targetSpin);
-      rearJ.setMaxMotorTorque(torque * throttleControl(bike));
+      rearJ.setMaxMotorTorque(torque * throttleFactor(bike));
       frontJ.enableMotor(false);
     } else if (input.brake) {
-      if (forwardSpeed > 0.5) {
+      if (forwardSpeed > 0.5 || input.holdStill) {
         // Front and rear brakes. Like a real rider, ease the front brake
         // when the rear wheel starts lifting (stops you going over the bars)
         var front = CONFIG.frontBrakeTorque;
-        if (CONFIG.throttleControl && bike.frontOnGround && bike.rearAir > 2) front *= 0.25;
+        if (bike.frontOnGround && bike.rearAir > 2) front *= 0.25;
         rearJ.enableMotor(true); rearJ.setMotorSpeed(0); rearJ.setMaxMotorTorque(CONFIG.rearBrakeTorque);
         frontJ.enableMotor(true); frontJ.setMotorSpeed(0); frontJ.setMaxMotorTorque(front);
       } else {
-        // Nearly stopped: back up slowly
+        // Stopped: the motor drives backwards (strong enough to back up a hill)
         rearJ.enableMotor(true);
         rearJ.setMotorSpeed(-CONFIG.reverseSpeed / Rr);
-        rearJ.setMaxMotorTorque(150);
+        rearJ.setMaxMotorTorque(CONFIG.reverseTorque);
         frontJ.enableMotor(false);
       }
     } else {
@@ -298,21 +345,21 @@ var Bike = (function () {
     var lean = (input.leanForward ? 1 : 0) - (input.leanBack ? 1 : 0);
 
     // The rider shifts their weight (real physics through the hip joint).
-    // Braking without leaning: the rider shifts back on their own.
-    var target = lean * CONFIG.riderLeanAngle;
-    if (lean === 0 && input.brake && !input.gas) target = -0.6 * CONFIG.riderLeanAngle;
+    // Braking hard without leaning: the rider shifts back on their own.
+    var target = lean > 0 ? CONFIG.riderLeanForward : lean < 0 ? -CONFIG.riderLeanBack : 0;
+    if (lean === 0 && input.brake && !input.gas && forwardSpeed > 1) target = -0.6 * CONFIG.riderLeanBack;
     if (bike.hips) {
       // Shift weight smoothly (a real rider can't throw their body instantly)
       var leanSpeed = (target - bike.hips.getJointAngle()) * 10;
       bike.hips.setMotorSpeed(Math.max(-CONFIG.riderLeanSpeed, Math.min(CONFIG.riderLeanSpeed, leanSpeed)));
     }
 
-    // Flip assist: extra turning so flips are possible (0 = real life)
-    if (lean !== 0 && CONFIG.flipAssist > 0) {
+    // Flip assist: a little extra turning in the air so flips are possible
+    // (0 = real life). Never on the ground, so wheelies stay real.
+    if (lean !== 0 && CONFIG.flipAssist > 0 && !onGround(bike)) {
       var wSpin = c.getAngularVelocity();
       if (!(Math.abs(wSpin) >= CONFIG.maxSpinSpeed && Math.sign(wSpin) === lean)) {
-        var strength = CONFIG.flipAssist * (onGround(bike) ? CONFIG.groundLeanFactor : 1);
-        c.applyTorque(lean * strength, true);
+        c.applyTorque(lean * CONFIG.flipAssist, true);
       }
     }
   }
@@ -356,7 +403,25 @@ var Bike = (function () {
     return null;
   }
 
+  // How hard the ground pushes the rear tyre forward (the drive force, N),
+  // from the friction the physics engine applied at the contact
+  function driveForce(bike) {
+    var w = bike.rear.wheel, fwd = bike.chassis.getWorldVector(Vec2(1, 0)), F = 0;
+    for (var ce = w.getContactList(); ce; ce = ce.next) {
+      var ct = ce.contact;
+      if (!ct.isTouching() || ce.other.getUserData() !== "ground") continue;
+      var n = ct.getWorldManifold(null).normal, m = ct.getManifold();
+      var sign = ct.getFixtureB().getBody() === w ? 1 : -1; // force on the wheel, not the ground
+      for (var k = 0; k < m.pointCount; k++) {
+        // friction acts along the tangent (n.y, -n.x)
+        F += sign * m.points[k].tangentImpulse * (n.y * fwd.x - n.x * fwd.y);
+      }
+    }
+    return F / CONFIG.physicsStepSec;
+  }
+
   function updateContacts(bike) {
+    bike.rearDrive = driveForce(bike);
     var ga = groundAngleUnder(bike.rear.wheel);
     if (ga !== null) bike.groundAngle = ga;
     bike.rearAir = touchesGround(bike.rear.wheel) ? 0 : bike.rearAir + 1;
@@ -383,14 +448,28 @@ var Bike = (function () {
   // Where each picture goes, in metres (see art/README.md)
   var PLACE = {
     bike:  { x: -1.10, y: -0.75, w: 2.20, h: 1.10 },  // relative to chassis centre
-    rider: { x: -0.45, y: -1.42, w: 0.75, h: 1.47 }   // relative to footpeg
+    rider: { x: -0.512, y: -1.615, w: 0.853, h: 1.671 } // relative to footpeg
   };
 
-  function inBodySpace(ctx, body, fn) {
-    var p = body.getPosition();
+  // A "pose" is where each part is: { chassis, rear, front, rider } each
+  // { x, y, a } (metres, radians), plus crashed. Drawing works from a pose so
+  // the ghost bike (a recording of your best run) can be drawn the same way.
+  function poseOf(bike) {
+    function part(b) { var p = b.getPosition(); return { x: p.x, y: p.y, a: b.getAngle() }; }
+    return { chassis: part(bike.chassis), rear: part(bike.rear.wheel), front: part(bike.front.wheel),
+             rider: part(bike.rider), crashed: bike.crashed };
+  }
+
+  // A point given relative to a part, in world metres
+  function toWorld(part, p) {
+    var c = Math.cos(part.a), s = Math.sin(part.a);
+    return { x: part.x + p.x * c - p.y * s, y: part.y + p.x * s + p.y * c };
+  }
+
+  function inPartSpace(ctx, part, fn) {
     ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(body.getAngle());
+    ctx.translate(part.x, part.y);
+    ctx.rotate(part.a);
     fn();
     ctx.restore();
   }
@@ -404,7 +483,7 @@ var Bike = (function () {
   }
 
   function drawWheel(ctx, w, R, img) {
-    inBodySpace(ctx, w, function () {
+    inPartSpace(ctx, w, function () {
       if (ready(img)) ctx.drawImage(img, -R, -R, 2 * R, 2 * R);
       else { ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill(); }
     });
@@ -412,7 +491,7 @@ var Bike = (function () {
 
   // Two-bone arm from shoulder to handlebar grip (elbow bends down/back)
   function drawArm(ctx, shoulder, grip) {
-    var upper = 0.31, fore = 0.31;
+    var upper = 0.34, fore = 0.35; // 6 ft rider: upper arm, forearm + hand to the grip
     var dx = grip.x - shoulder.x, dy = grip.y - shoulder.y;
     var d = Math.min(Math.hypot(dx, dy), upper + fore - 0.001);
     var a = Math.atan2(dy, dx);
@@ -428,41 +507,38 @@ var Bike = (function () {
   }
 
   function draw(ctx, bike) {
-    var c = bike.chassis;
+    drawPose(ctx, poseOf(bike));
+  }
+
+  function drawPose(ctx, P) {
+    var c = P.chassis;
     // Swingarm (back) and fork (front) connect the frame to the moving wheels
-    var pivot = c.getWorldPoint(v(GEO.swingPivot));
-    var rearAxle = bike.rear.wheel.getPosition();
-    metalLine(ctx, pivot, rearAxle, 0.09, "#3a3a40", "#8d8d96");
-    var forkTop = c.getWorldPoint(v(GEO.forkTop));
-    var frontAxle = bike.front.wheel.getPosition();
-    drawWheel(ctx, bike.rear.wheel, bike.rear.radius, images.rearWheel);
-    drawWheel(ctx, bike.front.wheel, bike.front.radius, images.wheel);
+    metalLine(ctx, toWorld(c, GEO.swingPivot), P.rear, 0.09, "#3a3a40", "#8d8d96");
+    var forkTop = toWorld(c, GEO.forkTop);
+    drawWheel(ctx, P.rear, CONFIG.rearWheelRadius, images.rearWheel);
+    drawWheel(ctx, P.front, CONFIG.frontWheelRadius, images.wheel);
 
     // Frame, engine, seat and plastics
-    inBodySpace(ctx, c, function () {
-      var P = PLACE.bike;
-      if (ready(images.bike)) ctx.drawImage(images.bike, P.x, P.y, P.w, P.h);
+    inPartSpace(ctx, c, function () {
+      var B = PLACE.bike;
+      if (ready(images.bike)) ctx.drawImage(images.bike, B.x, B.y, B.w, B.h);
       else { ctx.fillStyle = "#e8742a"; ctx.fillRect(-0.48, -0.22, 0.96, 0.34); }
     });
 
     // Front fork: silver tube from the clamp, gold leg sliding to the axle
+    var frontAxle = P.front;
     metalLine(ctx, forkTop, frontAxle, 0.07, "#1d1d22", "#c9c9d1");
     var dx = frontAxle.x - forkTop.x, dy = frontAxle.y - forkTop.y, len = Math.hypot(dx, dy) || 1;
     var legTop = { x: frontAxle.x - dx / len * 0.42, y: frontAxle.y - dy / len * 0.42 };
     metalLine(ctx, legTop, frontAxle, 0.10, "#b8860b", "#f7d774");
 
     // Rider (body picture + arms reaching to the handlebar)
-    var r = bike.rider;
-    inBodySpace(ctx, r, function () {
-      var P = PLACE.rider;
-      if (ready(images.rider)) ctx.drawImage(images.rider, P.x, P.y, P.w, P.h);
+    inPartSpace(ctx, P.rider, function () {
+      var R = PLACE.rider;
+      if (ready(images.rider)) ctx.drawImage(images.rider, R.x, R.y, R.w, R.h);
       else { ctx.fillStyle = "#5a2d82"; ctx.fillRect(-0.26, -1.09, 0.24, 0.5); }
     });
-    if (!bike.crashed) {
-      var shoulder = r.getWorldPoint(v(GEO.shoulder));
-      var grip = c.getWorldPoint(v(GEO.grip));
-      drawArm(ctx, shoulder, grip);
-    }
+    if (!P.crashed) drawArm(ctx, toWorld(P.rider, GEO.shoulder), toWorld(c, GEO.grip));
   }
 
   return {
@@ -477,6 +553,8 @@ var Bike = (function () {
     applyTuning: applyTuning,
     onGround: onGround,
     loadArt: loadArt,
-    draw: draw
+    poseOf: poseOf,
+    draw: draw,
+    drawPose: drawPose
   };
 })();
