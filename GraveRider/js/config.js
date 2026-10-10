@@ -63,8 +63,21 @@ var CONFIG = {
   // bars) and 0.17 m back (hanging off the back) [ESTIMATE: body-segment model]
   riderLeanForward: 0.20,    // radians at the pegs (0.20 × 0.84 m = 0.17 m)
   riderLeanBack: 0.20,       // radians (0.20 × 0.84 m = 0.17 m)
-  riderStrength: 4000,       // how firmly the rider holds their position (N·m) [ESTIMATE]
+  riderStrength: 4000,       // how firmly the rider is held in position on the pegs (N·m) [GAME CHOICE: this one joint
+                             // stands in for feet, knees gripping the bike and hands on the bars; muscle alone is
+                             // ~500-1200 N·m, but at 800 the rider falls off under ordinary hard braking]
   riderLeanSpeed: 0.8,       // weight shift speed: neutral to full lean in about 0.35 s [ESTIMATE]
+
+  // --- Rider's legs ---
+  // The rider soaks up landings by bending their knees: a spring + damper
+  // between the pegs and the body. A landing harder than the legs can hold
+  // throws the rider off (riderMaxG).
+  legStiffness: 15000,       // N/m, both legs [ESTIMATE: human leg stiffness 7-40 kN/m when hopping]
+  legDamping: 1.0,           // fraction of "no bounce" damping: muscles soak it up, no bounce [ESTIMATE]
+  legCrouch: 0.14,           // m the body can drop from the attack position to a deep crouch [ESTIMATE: body-segment model]
+  legStretch: 0.15,          // m it can rise with the legs straight [ESTIMATE: same model]
+  riderMaxG: 10,             // landing harder than this (g, on the rider) throws them off [ESTIMATE: a 2 m drop to
+                             // flat is ~4-8 g and rideable; 5 m is ~9-17 g, beyond what a rider can hold]
 
   // --- Suspension (KYB 48 mm fork + KYB shock) ---
   frontTravel: 0.310,        // fork travel, m [SPEC]

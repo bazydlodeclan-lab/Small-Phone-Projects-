@@ -133,17 +133,38 @@ var Bike = (function () {
       mass: CONFIG.riderMass, center: v(rc),
       I: GEO.riderInertia + CONFIG.riderMass * (rc.x * rc.x + rc.y * rc.y)
     });
-    // Hip limits: the furthest a rider can be thrown back or forward on the pegs
-    var hips = world.createJoint(pl.RevoluteJoint({
-      enableLimit: true, lowerAngle: -0.35, upperAngle: 0.35,
-      enableMotor: true, maxMotorTorque: CONFIG.riderStrength, motorSpeed: 0
-    }, chassis, rider, pegPos));
+    // Legs: the rider stands on the pegs and bends their knees to soak up
+    // landings (a spring + damper along the bike's up/down line), and leans
+    // forward/back at the pegs (the joint's motor turns the rider).
+    // The spring's rest point is raised by weight ÷ stiffness, so standing
+    // still the rider is exactly in the attack position.
+    var legPreload = CONFIG.riderMass * 9.81 * CONFIG.gravity / CONFIG.legStiffness;
+    var hips = world.createJoint(pl.WheelJoint({
+      bodyA: chassis, bodyB: rider,
+      localAnchorA: Vec2(GEO.footpeg.x, GEO.footpeg.y - legPreload),
+      localAnchorB: Vec2(0, 0), localAxisA: Vec2(0, 1),
+      enableMotor: true, maxMotorTorque: CONFIG.riderStrength, motorSpeed: 0,
+      frequencyHz: 2, dampingRatio: 0.5
+    }));
+    // How far the legs can bend (deep crouch) and straighten: two "ropes",
+    // like the wheels' hard stops
+    var legStops = [
+      world.createJoint(pl.RopeJoint({ bodyA: chassis, bodyB: rider, localAnchorB: Vec2(0, 0),
+        localAnchorA: Vec2(GEO.footpeg.x, GEO.footpeg.y - 1), maxLength: 1 + CONFIG.legCrouch })),
+      world.createJoint(pl.RopeJoint({ bodyA: chassis, bodyB: rider, localAnchorB: Vec2(0, 0),
+        localAnchorA: Vec2(GEO.footpeg.x, GEO.footpeg.y + 1), maxLength: 1 + CONFIG.legStretch }))
+    ];
 
     var bike = {
       world: world,
       chassis: chassis,
       rider: rider,
-      hips: hips,
+      hips: hips,         // legs + lean joint (pegs to rider)
+      legStops: legStops,
+      crouch: 0,          // how far the legs are bent from the attack position (m)
+      riderG: 0,          // rider's up/down acceleration in g (averaged over 3 steps)
+      riderVel: null,
+      riderAccel: [0, 0, 0],
       rear: rear,
       front: front,
       rearOnGround: false,
@@ -192,29 +213,45 @@ var Bike = (function () {
     });
   }
 
+  // Set a Planck WheelJoint spring to a real spring rate k (N/m) and damping
+  // ratio. Planck rates a spring against the mass it sees along the joint's
+  // line: both bodies, including how much a push along the line turns them.
+  function setSpring(joint, A, B, at, ax, k, zeta, sprung) {
+    var inv = 0;
+    [A, B].forEach(function (b) {
+      var c = b.getWorldCenter(), I = b.getInertia() - b.getMass() * Vec2.lengthSquared(b.getLocalCenter());
+      var lever = (at.x - c.x) * ax.y - (at.y - c.y) * ax.x;
+      inv += 1 / b.getMass() + lever * lever / I;
+    });
+    var mEff = 1 / inv;
+    joint.setSpringFrequencyHz(Math.sqrt(k / mEff) / (2 * Math.PI));
+    joint.setSpringDampingRatio(zeta * Math.sqrt(sprung / mEff));
+  }
+
   // --- Suspension springs and dampers. Called every step. ---
   // Planck describes a spring by how fast it would bounce the mass it sees
   // along the suspension line (chassis + wheel, including the chassis
   // turning), so convert the real spring rate (N/m) and damping into that.
   function suspension(bike) {
     var sprungTotal = CONFIG.bikeMass - CONFIG.frontWheelMass - CONFIG.rearWheelMass + CONFIG.riderMass;
-    var c = bike.chassis, com = c.getWorldCenter();
-    var Ic = c.getInertia() - c.getMass() * Vec2.lengthSquared(c.getLocalCenter()); // about its centre of mass
+    var c = bike.chassis;
     [[bike.rear, CONFIG.rearSpringRate, CONFIG.rearDamping, 0.55],
      [bike.front, CONFIG.frontSpringRate, CONFIG.frontDamping, 0.45]].forEach(function (e) {
       var s = e[0], k = e[1] * CONFIG.suspensionStiffness, zeta = e[2];
       var sprung = sprungTotal * e[3];   // weight carried by this end [ESTIMATE: 55% rear]
-      var ax = c.getWorldVector(v(s.axis)), w = s.wheel.getPosition();
-      var lever = (w.x - com.x) * ax.y - (w.y - com.y) * ax.x; // how much a push along the line turns the chassis
-      var mEff = 1 / (1 / c.getMass() + 1 / s.wheel.getMass() + lever * lever / Ic);
-      s.joint.setSpringFrequencyHz(Math.sqrt(k / mEff) / (2 * Math.PI));
-      s.joint.setSpringDampingRatio(zeta * Math.sqrt(sprung / mEff));
+      setSpring(s.joint, c, s.wheel, s.wheel.getPosition(), c.getWorldVector(v(s.axis)), k, zeta, sprung);
 
       // Bottoming cushion: real forks (hydraulic cones) and shocks (bump
       // stops) get much stiffer in the last 15% of travel
       var deep = compression(s) - 0.85 * s.travel;
       if (deep > 0) pushApart(bike, s, CONFIG.bottomingStiffness * k * deep);
     });
+
+    // The rider's legs
+    if (bike.hips) {
+      setSpring(bike.hips, c, bike.rider, bike.rider.getPosition(), c.getWorldVector(Vec2(0, 1)),
+        CONFIG.legStiffness, CONFIG.legDamping, CONFIG.riderMass);
+    }
 
     // Anti-squat: accelerating moves weight onto the rear wheel. On a real
     // bike the chain pull and swingarm angle hold the rear up against this
@@ -259,8 +296,9 @@ var Bike = (function () {
     // Air drag: ½ × air density × (drag × area) × speed²
     var drag = 0.5 * CONFIG.airDensity * CONFIG.dragArea * speed * speed;
     c.applyForce(Vec2(-ux * drag, -uy * drag), c.getWorldCenter(), true);
-    // Rolling resistance on each wheel touching the ground
-    var weight = (CONFIG.bikeMass + CONFIG.riderMass) * gravity;
+    // Rolling resistance on each wheel touching the ground (on a slope the
+    // tyres press on the ground with only cos(slope) of the weight)
+    var weight = (CONFIG.bikeMass + CONFIG.riderMass) * gravity * Math.cos(bike.groundAngle);
     [[bike.rear, bike.rearOnGround, 0.55], [bike.front, bike.frontOnGround, 0.45]].forEach(function (e) {
       if (!e[1]) return;
       var f = CONFIG.rollingResistance * weight * e[2];
@@ -363,7 +401,7 @@ var Bike = (function () {
     if (lean === 0 && input.brake && !input.gas && forwardSpeed > 1) target = -0.6 * CONFIG.riderLeanBack;
     if (bike.hips) {
       // Shift weight smoothly (a real rider can't throw their body instantly)
-      var leanSpeed = (target - bike.hips.getJointAngle()) * 10;
+      var leanSpeed = (target - (bike.rider.getAngle() - c.getAngle())) * 10;
       bike.hips.setMotorSpeed(Math.max(-CONFIG.riderLeanSpeed, Math.min(CONFIG.riderLeanSpeed, leanSpeed)));
     }
 
@@ -382,6 +420,7 @@ var Bike = (function () {
     if (bike.crashed) return;
     bike.crashed = true;
     bike.world.destroyJoint(bike.hips);
+    bike.legStops.forEach(function (j) { bike.world.destroyJoint(j); });
     bike.hips = null;
     bike.rear.joint.enableMotor(false);
     bike.front.joint.enableMotor(false);
@@ -433,7 +472,25 @@ var Bike = (function () {
     return F / CONFIG.physicsStepSec;
   }
 
+  // How far the legs are bent from the attack position (m, + = crouching)
+  // (a = chassis angle, peg = footpeg and r = rider origin in world metres)
+  function crouchOf(a, peg, r) {
+    return (r.x - peg.x) * -Math.sin(a) + (r.y - peg.y) * Math.cos(a);
+  }
+
   function updateContacts(bike) {
+    if (bike.hips) {
+      bike.crouch = crouchOf(bike.chassis.getAngle(), bike.chassis.getWorldPoint(v(GEO.footpeg)), bike.rider.getPosition());
+      // Rider's up/down acceleration (g), averaged over 3 steps: a landing too
+      // hard for the legs to hold throws the rider off
+      var rv = bike.rider.getLinearVelocity(), dt = CONFIG.physicsStepSec;
+      if (bike.riderVel) {
+        bike.riderAccel.shift();
+        bike.riderAccel.push(-(rv.y - bike.riderVel.y) / dt / 9.81); // + = pushed up
+        bike.riderG = (bike.riderAccel[0] + bike.riderAccel[1] + bike.riderAccel[2]) / 3;
+      }
+      bike.riderVel = { x: rv.x, y: rv.y };
+    }
     bike.rearDrive = driveForce(bike);
     var ga = groundAngleUnder(bike.rear.wheel);
     if (ga !== null) bike.groundAngle = ga;
@@ -546,10 +603,12 @@ var Bike = (function () {
     var legTop = { x: frontAxle.x - dx / len * 0.42, y: frontAxle.y - dy / len * 0.42 };
     metalLine(ctx, legTop, frontAxle, 0.10, "#b8860b", "#f7d774");
 
-    // Rider (body picture + arms reaching to the handlebar)
+    // Rider (body picture + arms reaching to the handlebar). When the legs
+    // bend the body drops; the boots stay on the pegs, so the picture squashes.
+    var crouch = P.crashed ? 0 : crouchOf(c.a, toWorld(c, GEO.footpeg), P.rider);
     inPartSpace(ctx, P.rider, function () {
       var R = PLACE.rider;
-      if (ready(images.rider)) ctx.drawImage(images.rider, R.x, R.y, R.w, R.h);
+      if (ready(images.rider)) ctx.drawImage(images.rider, R.x, R.y, R.w, R.h - crouch);
       else { ctx.fillStyle = "#5a2d82"; ctx.fillRect(-0.26, -1.09, 0.24, 0.5); }
     });
     if (!P.crashed) drawArm(ctx, toWorld(P.rider, GEO.shoulder), toWorld(c, GEO.grip));

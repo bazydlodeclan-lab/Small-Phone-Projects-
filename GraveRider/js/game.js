@@ -262,7 +262,8 @@ var Game = (function () {
 
     if (state.mode === "playing") {
       // Crash is checked first: crashing on the same step as the finish = crash
-      if (bike.riderHit || isFallen()) crash();
+      // (or a landing too hard for the rider's legs to hold)
+      if (bike.riderHit || bike.riderG > CONFIG.riderMaxG || isFallen()) crash();
       else {
         trackFlips();
         trackStats();

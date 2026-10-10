@@ -58,17 +58,18 @@ function installHelpers() {
       }
       Object.assign(G.input, none);
     },
-    // A real-size motocross double (the test track's: 2.2 m tall, 14 m gap)
-    // after a long run-up. Reach takeoffKmh, then backflip: lean back with
-    // the throttle open until one full turn, then level out for the landing.
-    doubleJumpBackflip(takeoffKmh) {
-      const S = Shapes, X = -3600;
-      LEVELS.push({ name: "Double test", physics: {}, groundColor: "#6b4f3a", groundTopColor: "#a07e5e",
-        start: { x: 0, y: -40 }, checkpoints: [], finish: { x: 8000 }, fallLimitY: 900, zones: [],
-        terrain: [S.join(S.line(-600, 0, 3000, 0), S.kicker(6600 + X, 0, 6900 + X, -87, 12),
-          [{ x: 6992 + X, y: -140 }, { x: 7002 + X, y: -140 }], S.curve(7002 + X, -140, 7070 + X, 0, 6),
-          S.line(7070 + X, 0, 7700 + X, 0), [{ x: 7867 + X, y: -140 }, { x: 7920 + X, y: -140 }],
-          S.curve(7920 + X, -140, 8800 + X, 0, 20), S.line(8800 + X, 0, 9600, 0))] });
+    // A freestyle-style ramp: 2.2 m tall with a ~43° lip, a 3.4 m tall
+    // landing ramp 15 m away and a long landing. Reach takeoffKmh, then
+    // backflip: lean back with the throttle open until one full turn, then
+    // level out for the landing. (The test track's double is too short for
+    // a flip: the speed a flip needs overshoots its landing onto the flat.)
+    rampBackflip(takeoffKmh) {
+      const S = Shapes;
+      LEVELS.push({ name: "Ramp test", physics: {}, groundColor: "#6b4f3a", groundTopColor: "#a07e5e",
+        start: { x: 0, y: -40 }, checkpoints: [], finish: { x: 6900 }, fallLimitY: 900, zones: [],
+        terrain: [S.join(S.line(-600, 0, 3000, 0), S.kicker(3000, 0, 3300, -140, 14),
+          [{ x: 3304, y: -140 }, { x: 3310, y: 0 }], S.line(3310, 0, 4240, 0),
+          [{ x: 4300, y: -220 }, { x: 4340, y: -220 }], S.curve(4340, -220, 5440, 0, 24), S.line(5440, 0, 9500, 0))] });
       G.loadLevel(LEVELS.length - 1);
       let flipping = false, done = false, target = 0, flipInAir = false;
       for (let i = 0; i < 60 * 30 && s.mode !== "finished" && s.mode !== "crashed"; i++) {
@@ -82,7 +83,7 @@ function installHelpers() {
           inp.gas = i > 36 && e > -0.30 && kmh < takeoffKmh;
           if (e < -0.5 && !b.frontOnGround) inp.brake = true;
           if (flipping) { flipping = false; done = true; }
-        } else if (!done && (flipping || (px > 3350 && px < 3800))) {
+        } else if (!done && (flipping || (px > 3250 && px < 3700))) {
           if (!flipping) { flipping = true; target = Math.round(raw / (2 * Math.PI)) * 2 * Math.PI - 2 * Math.PI; }
           const e = raw + 0.6 * w - target;
           if (e > 0.1) { inp.leanBack = true; inp.gas = true; } // throttle in the air lifts the nose too
@@ -268,14 +269,14 @@ function installHelpers() {
   check("Frontflips are counted separately", flips.front.front === 1 && flips.front.back === 0,
     "frontflips " + flips.front.front + ", backflips " + flips.front.back);
 
-  // 7. Backflip off a real-size double: counts mid-air and takes time off your time
+  // 7. Backflip off a freestyle ramp: counts mid-air and takes time off your time
   const flip = await page.evaluate(() => {
     const s = Game.state; s.paused = true;
-    const r = T.doubleJumpBackflip(65);
+    const r = T.rampBackflip(60);
     Game.loadLevel(0); s.paused = false;
     return r;
   });
-  check("Backflip off the big double (about 38 mph take-off, default flip assist)", flip.backflips === 1 && flip.crashes === 0 && flip.mode === "finished",
+  check("Backflip off a freestyle ramp (about 32 mph take-off, default flip assist)", flip.backflips === 1 && flip.crashes === 0 && flip.mode === "finished",
     "backflips " + flip.backflips + ", crashes " + flip.crashes + ", " + flip.mode);
   check("The flip counts mid-air and takes 0.5 s off your time", flip.flipInAir && flip.bonus === 500 && Math.abs(flip.race - (flip.timeMs - 500)) < 1e-6,
     "counted in the air: " + flip.flipInAir + ", time " + (flip.race / 1000).toFixed(2) + " s = clock " + (flip.timeMs / 1000).toFixed(2) + " - 0.5");
@@ -549,13 +550,34 @@ function installHelpers() {
   check("Bike frame touching the ground counts as on the ground (no air time, no flip assist)",
     Math.abs(fixes.bellyAssistDiff) < 1e-6 && fixes.bellyAirMs === 0, "assist difference " + fixes.bellyAssistDiff.toExponential(1) + ", air " + fixes.bellyAirMs + " ms");
 
-  // 13. R restarts the level
+  // 13. Hard landings: a 2 m drop to flat is rideable, 5 m throws the rider off
+  const drops = await page.evaluate(() => {
+    const G = Game, s = G.state; s.paused = true;
+    const lvl = T.flatLevel();
+    function drop(h) {
+      Object.assign(G.input, T.none); G.loadLevel(lvl);
+      G.spawnBike({ x: 0, y: -(h + 0.66) * CONFIG.pixelsPerMetre });
+      Object.assign(G.input, { brake: true }); G.step(); Object.assign(G.input, T.none); // start the clock
+      let maxG = 0, maxCrouch = 0;
+      for (let i = 0; i < 240 && s.mode === "playing"; i++) { G.step(); maxG = Math.max(maxG, s.bike.riderG); maxCrouch = Math.max(maxCrouch, s.bike.crouch); }
+      return { mode: s.mode, maxG, maxCrouch };
+    }
+    const out = { d2: drop(2), d5: drop(5) };
+    LEVELS.pop(); G.loadLevel(0); s.paused = false;
+    return out;
+  });
+  check("The rider's legs soak up a 2 m drop to flat (no crash)", drops.d2.mode === "playing" && drops.d2.maxCrouch > 0.05,
+    "legs bent " + Math.round(drops.d2.maxCrouch * 1000) + " mm, " + drops.d2.maxG.toFixed(1) + " g");
+  check("Landing a 5 m drop to flat is too hard: the rider is thrown off", drops.d5.mode === "crashed",
+    drops.d5.mode + ", " + drops.d5.maxG.toFixed(1) + " g");
+
+  // 14. R restarts the level
   await page.keyboard.press("KeyR");
   await page.waitForTimeout(200);
   const r = await bike();
   check("R restarts the level (waiting for a control again)", r.mode === "ready" && r.timeMs === 0 && Math.abs(r.x) < 60 && r.backflips === 0);
 
-  // 13. Tuning panel: T opens it, sliders change values, copy works, tuned runs aren't saved, clear works
+  // 15. Tuning panel: T opens it, sliders change values, copy works, tuned runs aren't saved, clear works
   await page.keyboard.press("KeyT");
   const open = await page.isVisible("#tuning");
   await page.locator("#tuning input[type=range]").first().fill("1.5");

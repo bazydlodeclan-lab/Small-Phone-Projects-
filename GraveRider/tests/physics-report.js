@@ -183,11 +183,13 @@ const ROOT = path.join(__dirname, "..");
     function drop(hm) {
       reset(); track([[-50, 0], [500, 0]], 0);
       G.spawnBike({ x: 0, y: -(hm + 0.66) * PPM });
-      let maxR = 0, maxF = 0;
-      run({}, 240, () => { maxR = Math.max(maxR, Bike.compression(s.bike.rear)); maxF = Math.max(maxF, Bike.compression(s.bike.front)); });
-      return { h: hm, rear: maxR / CONFIG.rearTravel, front: maxF / CONFIG.frontTravel, crashed: s.crashes > 0 };
+      run({ brake: true }, 1); // start the clock (crashes only count while it runs)
+      let maxR = 0, maxF = 0, maxC = 0, maxG = 0;
+      run({}, 240, () => { const b = s.bike; maxR = Math.max(maxR, Bike.compression(b.rear)); maxF = Math.max(maxF, Bike.compression(b.front));
+        maxC = Math.max(maxC, b.crouch); maxG = Math.max(maxG, b.riderG); });
+      return { h: hm, rear: maxR / CONFIG.rearTravel, front: maxF / CONFIG.frontTravel, legs: maxC / CONFIG.legCrouch, g: maxG, crashed: s.crashes > 0 };
     }
-    out.drops = [0.5, 1, 2, 3, 5].map(drop);
+    out.drops = [0.5, 1, 2, 3, 4, 5].map(drop);
 
     reset(); delete LEVELS[9]; LEVELS.length = 1; G.loadLevel(0); s.paused = false;
     out.config = JSON.parse(JSON.stringify(CONFIG));
@@ -221,10 +223,11 @@ const ROOT = path.join(__dirname, "..");
   L.push("## Suspension", "");
   L.push(`- Sag with the rider standing still: rear **${(R.sag.rear * 1000).toFixed(0)} mm** (${(R.sag.rear / C.rearTravel * 100).toFixed(0)}% of travel), front **${(R.sag.front * 1000).toFixed(0)} mm** (${(R.sag.front / C.frontTravel * 100).toFixed(0)}%). Motocross target: 100–105 mm rear with the rider seated (about 94 mm standing).`);
   L.push(`- Sag of the bike alone: rear **${(R.sag.bikeRear * 1000).toFixed(0)} mm**, front **${(R.sag.bikeFront * 1000).toFixed(0)} mm**. Target: 30–40 mm rear.`, "");
-  L.push("| Drop onto flat ground | Rear travel used | Front travel used | Rider crashes? |", "|---|---|---|---|");
-  R.drops.forEach(d => L.push(`| ${d.h} m | ${(d.rear * 100).toFixed(0)}% | ${(d.front * 100).toFixed(0)}% | ${d.crashed ? "yes" : "no"} |`));
-  L.push("", "Over 100% means it hit the bottoming stop (a real bike would bottom out too).");
-  L.push("The rider's legs are not modelled as springs, so landings here are a bit harsher than real life", "(a real rider soaks up part of a landing with their legs).", "");
+  L.push("| Drop onto flat ground | Rear travel used | Front travel used | Rider's legs bent | Peak g on the rider | Rider thrown off? |", "|---|---|---|---|---|---|");
+  R.drops.forEach(d => L.push(`| ${d.h} m | ${(d.rear * 100).toFixed(0)}% | ${(d.front * 100).toFixed(0)}% | ${(Math.min(1, d.legs) * 100).toFixed(0)}% | ${d.g.toFixed(1)} g | ${d.crashed ? "yes" : "no"} |`));
+  L.push("", "Over 100% means it hit the bottoming stop (a real bike bottoms out too on big flat landings).");
+  L.push(`The rider's legs are a spring + damper (${C.legStiffness} N/m, ${(C.legCrouch * 100).toFixed(0)} cm of crouch). Over ${C.riderMaxG} g on the rider throws them off.`);
+  L.push("Real-world reference: a 2 m drop to flat is about 4–8 g (rideable); 5 m is about 9–17 g (a crash).", "");
 
   L.push("## Acceleration (flat ground, full throttle)", "");
   L.push("| | 0–50 km/h | 0–100 km/h | Distance in 5 s | Highest wheelie | Top speed reached | Flipped over? |", "|---|---|---|---|---|---|---|");
