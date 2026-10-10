@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 110" width="880" height="440">
+  <!-- Electric motocross bike, side view facing right. 1 unit = 1 cm.
+       Chassis origin (physics) at (110, 75). Suspension fully extended.
+       Rear axle (38, 105), front axle (186.7, 104.3), fork top (148, 29),
+       grip (138, 23), footpeg (102, 97), swingarm pivot (98, 85).
+       Wheels, fork legs and swingarm are drawn by the game (they move). -->
+  <defs>
+    <linearGradient id="plastic" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.7" stop-color="#e6e7ea"/><stop offset="1" stop-color="#b9bcc2"/>
+    </linearGradient>
+    <linearGradient id="dark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b3e44"/><stop offset="1" stop-color="#15161a"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7d828b"/><stop offset="1" stop-color="#3c4048"/>
+    </linearGradient>
+    <linearGradient id="battery" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a4e56"/><stop offset="0.5" stop-color="#2b2e34"/><stop offset="1" stop-color="#1b1d21"/>
+    </linearGradient>
+    <linearGradient id="motor" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9aa0aa"/><stop offset="1" stop-color="#4a4f58"/>
+    </linearGradient>
+    <linearGradient id="seat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#40434a"/><stop offset="1" stop-color="#121316"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rear shock (behind the frame) -->
+  <g transform="rotate(28 98 66)">
+    <rect x="95" y="50" width="6" height="30" rx="2" fill="#2a2c31"/>
+    <rect x="94.5" y="56" width="7" height="3" fill="#d9dce1"/>
+    <path d="M92 60 h12 M92 63.5 h12 M92 67 h12 M92 70.5 h12 M92 74 h12" stroke="#c7cbd2" stroke-width="2"/>
+  </g>
+
+  <!-- Frame tubes (steel) -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M147 31 L128 56 L118 96 L100 98" stroke="#1d1f23" stroke-width="5.5"/>
+    <path d="M147 31 L128 56 L118 96 L100 98" stroke="url(#frame)" stroke-width="3"/>
+    <path d="M146 34 L104 50 L96 86" stroke="#1d1f23" stroke-width="5"/>
+    <path d="M146 34 L104 50 L96 86" stroke="url(#frame)" stroke-width="2.6"/>
+    <path d="M104 50 L62 44 M98 70 L62 46" stroke="#1d1f23" stroke-width="3.2"/>
+  </g>
+
+  <!-- Battery pack (centre of the frame) -->
+  <path d="M106 52 L134 50 Q140 50 140 56 L136 86 Q135 92 128 92 L108 92 Q102 92 102 86 Z" fill="url(#battery)" stroke="#101114" stroke-width="1"/>
+  <path d="M108 60 L134 58 M107 68 L133 66 M106 76 L132 74 M106 84 L131 82" stroke="#565a62" stroke-width="0.8"/>
+  <rect x="114" y="54" width="10" height="3" rx="1" fill="#6dd36b"/>
+
+  <!-- Electric motor + front sprocket (low, at the swingarm pivot) -->
+  <circle cx="100" cy="88" r="10" fill="url(#motor)" stroke="#2a2d33" stroke-width="1.2"/>
+  <circle cx="100" cy="88" r="6.5" fill="#3a3e45"/>
+  <circle cx="100" cy="88" r="3" fill="#1c1d21"/>
+  <path d="M93 81 L107 95 M107 81 L93 95" stroke="#62666e" stroke-width="0.8"/>
+  <!-- Skid plate -->
+  <path d="M104 94 L132 93 Q134 98 128 101 L108 101 Q103 99 104 94 Z" fill="#2a2c31" stroke="#55585f" stroke-width="0.6"/>
+
+  <!-- Rear fender + side panel -->
+  <path d="M98 42 L36 39 Q18 38 6 32 L7 38 Q24 48 60 51 L98 54 Z" fill="url(#plastic)" stroke="#8a8e95" stroke-width="0.8"/>
+  <path d="M66 45 L100 46 L101 70 Q88 74 78 73 Q66 62 66 45 Z" fill="url(#plastic)" stroke="#8a8e95" stroke-width="0.8"/>
+  <path d="M70 52 L98 53" stroke="#1d1f23" stroke-width="2.2"/>
+  <text x="85" y="66" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="12" text-anchor="middle" fill="#1d1f23">13</text>
+
+  <!-- Seat (top at 96 cm seat height) -->
+  <path d="M48 39 Q50 34 60 34 L120 32 Q129 32 131 36 L127 40 L52 43 Z" fill="url(#seat)"/>
+  <path d="M58 35.5 L120 33.5" stroke="#5c6068" stroke-width="0.9" stroke-linecap="round"/>
+
+  <!-- Tank cover / radiator-style shrouds (electric bikes keep the shape) -->
+  <path d="M118 34 L144 27 Q151 26 153 32 L149 54 Q143 64 128 66 L118 52 Z" fill="url(#plastic)" stroke="#8a8e95" stroke-width="0.9"/>
+  <path d="M124 50 Q136 47 148 37 L150 44 Q141 57 128 60 Z" fill="url(#dark)"/>
+  <path d="M127 54 Q138 52 146 45" stroke="#c8222b" stroke-width="2" fill="none"/>
+  <g stroke="#7a7e86" stroke-width="0.8">
+    <path d="M132 32 L146 29 M132 36 L146 33 M132 40 L145 37"/>
+  </g>
+
+  <!-- Front number plate -->
+  <path d="M150 20 L163 24 L159 45 L146 41 Z" fill="url(#plastic)" stroke="#8a8e95" stroke-width="0.8"/>
+  <!-- Front fender (on the lower fork clamp, high above the tyre) -->
+  <path d="M150 57 Q178 50 206 60 L204 65 Q178 57 152 63 Z" fill="url(#plastic)" stroke="#8a8e95" stroke-width="0.8"/>
+
+  <!-- Fork clamps + handlebar -->
+  <rect x="142" y="26" width="13" height="5" rx="1.5" fill="#c9ccd2" stroke="#55585f" stroke-width="0.6" transform="rotate(27 148 28)"/>
+  <rect x="146" y="48" width="12" height="4.5" rx="1.5" fill="#c9ccd2" stroke="#55585f" stroke-width="0.6" transform="rotate(27 152 50)"/>
+  <path d="M148 27 L138 21" stroke="#151618" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M142 23 L132 22" stroke="#9a9ea6" stroke-width="1.4" stroke-linecap="round"/>
+
+  <!-- Footpeg -->
+  <rect x="96" y="95" width="12" height="4" rx="1" fill="#2a2c31" stroke="#7a7e86" stroke-width="0.6"/>
+</svg>
