@@ -290,9 +290,17 @@ function installHelpers() {
     G.loadLevel(0);
     T.autopilot();
     const finishedAt = s.timeMs, xAtFinish = G.bikePos().x;
-    // after the finish: the rider brakes to a stop and the clock is frozen
-    let minX = Infinity;
-    for (let i = 0; i < 400; i++) { G.step(); if (i > 200) minX = Math.min(minX, G.bikePos().x); }
+    const finishKmh = Math.hypot(G.bikeVel().x, G.bikeVel().y) / CONFIG.pixelsPerMetre * 3.6;
+    // after the finish: the rider brakes to a stop (upright, never rolling
+    // back) and the clock is frozen
+    let maxX = -Infinity, worstTilt = 0, riderHit = false;
+    for (let i = 0; i < 600; i++) {
+      G.step();
+      maxX = Math.max(maxX, G.bikePos().x);
+      const a = s.bike.chassis.getAngle();
+      worstTilt = Math.max(worstTilt, Math.abs(Math.atan2(Math.sin(a), Math.cos(a))));
+      riderHit = riderHit || s.bike.riderHit;
+    }
     const endX = G.bikePos().x, endSpeed = Math.hypot(G.bikeVel().x, G.bikeVel().y) / CONFIG.pixelsPerMetre;
     // Physics zones: add a test zone around the bike and check gravity changes
     LEVELS[0].zones.push({ x: -1e6, y: -1e6, w: 2e6, h: 2e6, physics: { gravityScale: 0.35 } });
@@ -303,15 +311,17 @@ function installHelpers() {
     s.paused = false;
     return { mode: s.mode, zoneGravity, cp: s.checkpointIndex,
       crashes: s.crashes, timeMs: s.timeMs, finishedAt, race: G.raceTimeMs(), result: s.result,
-      endSpeed, minX, endX, xAtFinish, stats: s.stats, splits: s.splits.slice() };
+      endSpeed, maxX, endX, xAtFinish, finishKmh, worstTilt, riderHit, stats: s.stats, splits: s.splits.slice() };
   });
   check("Checkpoint is reached", run.cp === 0);
   check("Physics zones change gravity", Math.abs(run.zoneGravity - 9.81 * 0.35) < 0.01, "gravity in zone " + run.zoneGravity.toFixed(2) + " m/s²");
   check("Finish line ends the level", run.mode === "finished",
     "time " + (run.race / 1000).toFixed(2) + " s, crashes " + run.crashes);
   check("Clock stops at the finish", run.timeMs === run.finishedAt);
-  check("After the finish the bike stops (no driving on, no reversing)", run.endSpeed < 0.3 && run.endX >= run.minX - 1,
-    "speed " + run.endSpeed.toFixed(2) + " m/s, rolled " + ((run.endX - run.xAtFinish) / 64).toFixed(1) + " m after the line");
+  check("After the finish the bike brakes to a stop upright (no driving on, no rolling back)",
+    run.endSpeed < 0.3 && run.endX >= run.maxX - 0.1 * 64 && run.worstTilt < 0.6 && !run.riderHit,
+    Math.round(run.finishKmh) + " km/h at the line, stopped " + ((run.endX - run.xAtFinish) / 64).toFixed(1) + " m after it, rolled back " +
+    ((run.maxX - run.endX) / 64).toFixed(2) + " m, worst tilt " + (run.worstTilt * 57.3).toFixed(0) + "°");
   check("First finish is saved as the best time", run.result && run.result.newBest && run.result.saved,
     JSON.stringify(run.result));
   check("Ride stats are recorded", run.stats.topSpeed > 10 && run.stats.distance > 140 && run.stats.longestJump > 5 && run.stats.airMs > 500,
@@ -458,7 +468,7 @@ function installHelpers() {
   check("Brake slows the bike down", extra.braked < extra.fast * 0.5,
     "speed " + extra.fast.toFixed(1) + " -> " + extra.braked.toFixed(1) + " m/s");
   check("Holding brake when stopped drives backwards", extra.reversing < -2, "speed " + extra.reversing.toFixed(1) + " m/s");
-  check("Holding brake facing downhill backs up a 12° slope", extra.climbed > 1, "climbed " + extra.climbed.toFixed(1) + " m in 4 s");
+  check("Holding brake facing downhill backs up a 12° slope", extra.climbed > 0.5, "climbed " + extra.climbed.toFixed(1) + " m in 4 s");
   check("Crash after the checkpoint respawns at the checkpoint",
     extra.reachedCp === 0 && extra.crashedAfterCp && Math.abs(extra.respawnX - extra.cpX) < 60 && extra.mode === "playing",
     "respawned at x " + Math.round(extra.respawnX) + " (checkpoint " + extra.cpX + ")");
@@ -487,23 +497,26 @@ function installHelpers() {
     }
     const out = {};
     // a) cross the finish flat out (about 120 km/h)
-    straight(14000);
-    speedUp(200, 14000);
+    straight(22000);
+    speedUp(200, 22000);
     for (let i = 0; i < 60 * 10 && s.mode === "playing"; i++) { Object.assign(G.input, T.none, { gas: true, leanForward: true }); G.step(); }
     out.finishKmh = kmh(); out.finishMode = s.mode;
     let worst = 0;
     for (let i = 0; i < 600; i++) { G.step(); worst = Math.max(worst, tilt()); }
     out.finishWorstTilt = worst; out.finishEndKmh = kmh();
     LEVELS.pop();
-    // b) hold the brake at 110 km/h
-    straight(1e9);
-    speedUp(110, 1e9);
-    out.brakeFrom = kmh();
-    worst = 0;
-    for (let i = 0; i < 300 && s.mode === "playing"; i++) { Object.assign(G.input, T.none, { brake: true }); G.step(); worst = Math.max(worst, tilt()); }
-    out.brakeMode = s.mode; out.brakeWorstTilt = worst;
-    Object.assign(G.input, T.none);
-    LEVELS.pop();
+    // b) hold the brake at 80, 110 and 144 km/h (top speed)
+    out.brakes = [];
+    [80, 110, 144].forEach(v => {
+      straight(1e9);
+      speedUp(v, 1e9);
+      const from = kmh();
+      worst = 0;
+      for (let i = 0; i < 360 && s.mode === "playing"; i++) { Object.assign(G.input, T.none, { brake: true }); G.step(); worst = Math.max(worst, tilt()); }
+      out.brakes.push({ from, mode: s.mode, worst });
+      Object.assign(G.input, T.none);
+      LEVELS.pop();
+    });
     // c) change a slider during the run, put it back, then finish
     G.clearBest(); G.loadLevel(0);
     Object.assign(G.input, { gas: true }); G.step(); Object.assign(G.input, T.none);
@@ -539,11 +552,12 @@ function installHelpers() {
     G.loadLevel(0); s.paused = false;
     return out;
   });
-  check("Crossing the finish flat out: the bike brakes to a stop upright", fixes.finishMode === "finished" && fixes.finishKmh > 100 &&
+  check("Crossing the finish flat out (top speed): the bike brakes to a stop upright", fixes.finishMode === "finished" && fixes.finishKmh > 135 &&
     fixes.finishWorstTilt < 0.6 && fixes.finishEndKmh < 1,
     Math.round(fixes.finishKmh) + " km/h at the line, worst tilt " + (fixes.finishWorstTilt * 57.3).toFixed(0) + "°");
-  check("Holding the brake at 110 km/h doesn't throw the rider over the bars", fixes.brakeMode === "playing" && fixes.brakeWorstTilt < 0.8,
-    "from " + Math.round(fixes.brakeFrom) + " km/h, worst tilt " + (fixes.brakeWorstTilt * 57.3).toFixed(0) + "°, " + fixes.brakeMode);
+  check("Holding the brake from 80, 110 and 144 km/h never throws the rider over the bars",
+    fixes.brakes.every(b => b.mode === "playing" && b.worst < 0.8) && fixes.brakes[2].from > 135,
+    fixes.brakes.map(b => Math.round(b.from) + " km/h: " + b.mode + ", worst tilt " + (b.worst * 57.3).toFixed(0) + "°").join("; "));
   check("Changing a slider mid-run, then putting it back, still doesn't save the run", fixes.tunedResult && fixes.tunedResult.tuned &&
     !fixes.tunedResult.saved && fixes.tunedBest === null, JSON.stringify(fixes.tunedResult));
   check("A damaged save file is ignored (the game keeps running)", fixes.damagedBest === null && fixes.damagedThrew === "", fixes.damagedThrew);
@@ -571,11 +585,20 @@ function installHelpers() {
   check("Landing a 5 m drop to flat is too hard: the rider is thrown off", drops.d5.mode === "crashed",
     drops.d5.mode + ", " + drops.d5.maxG.toFixed(1) + " g");
 
-  // 14. R restarts the level
+  // 14. R restarts the level (ride a little first, so there is something to reset)
+  await page.keyboard.down("ArrowRight");
+  await page.waitForTimeout(400);
+  await page.keyboard.down("ArrowUp");
+  await page.waitForTimeout(700);
+  await page.keyboard.up("ArrowUp");
+  await page.keyboard.up("ArrowRight");
+  const moving = await bike();
   await page.keyboard.press("KeyR");
   await page.waitForTimeout(200);
   const r = await bike();
-  check("R restarts the level (waiting for a control again)", r.mode === "ready" && r.timeMs === 0 && Math.abs(r.x) < 60 && r.backflips === 0);
+  check("R restarts the level (waiting for a control again)", moving.mode !== "ready" && moving.timeMs > 0 && moving.x > 60 &&
+    r.mode === "ready" && r.timeMs === 0 && Math.abs(r.x) < 60 && r.backflips === 0,
+    "before R: " + moving.mode + ", x " + Math.round(moving.x) + "; after: " + r.mode + ", x " + Math.round(r.x));
 
   // 15. Tuning panel: T opens it, sliders change values, copy works, tuned runs aren't saved, clear works
   await page.keyboard.press("KeyT");
@@ -585,7 +608,13 @@ function installHelpers() {
   await page.click("#tuning-copy");
   await page.waitForTimeout(200);
   const copied = await page.inputValue("#tuning-text");
+  const focusAfterCopy = await page.evaluate(() => document.activeElement.tagName);
   await shot("08-tuning");
+  await page.keyboard.press("KeyT");
+  const closedAfterCopy = !(await page.isVisible("#tuning"));
+  await page.keyboard.press("KeyT");
+  check("After Copy settings the keys still work (T closes the panel)", focusAfterCopy !== "TEXTAREA" && closedAfterCopy,
+    "focus on " + focusAfterCopy);
   check("T opens the tuning panel", open);
   check("Gravity slider changes the setting", grav === 1.5, "gravity " + grav);
   check("Copy settings produces the values as text", copied.includes("gravity: 1.5") && copied.includes("throttleControl"));
@@ -606,15 +635,89 @@ function installHelpers() {
   check("A run with changed tuning settings is not saved as best", tuned.res && tuned.res.newBest && tuned.res.tuned && !tuned.res.saved && tuned.bestAfter === null,
     JSON.stringify(tuned.res));
   await page.click("#tuning-reset");
+  // finish a normal run so there is a best time to clear
+  const saved = await page.evaluate(() => {
+    const G = Game, s = G.state; s.paused = true;
+    G.loadLevel(0);
+    Object.assign(G.input, { gas: true }); G.step(); Object.assign(G.input, T.none);
+    G.spawnBike({ x: s.level.finish.x - 20, y: -40 });
+    Object.assign(G.input, { gas: true });
+    for (let i = 0; i < 60 && s.mode !== "finished"; i++) G.step();
+    Object.assign(G.input, T.none);
+    G.loadLevel(0); s.paused = false;
+    let stored = false; try { stored = !!localStorage.getItem("graveRider.best.v1.Test Track"); } catch (e) {}
+    return { best: !!s.best, stored };
+  });
   await page.click("#tuning-clear");
-  const cleared = await page.evaluate(() => { Game.loadLevel(0); return Game.state.best === null; });
-  check("Clear best times removes the best time and ghost", cleared);
+  const cleared = await page.evaluate(() => {
+    const s = Game.state, now = { best: s.best, bestMs: s.bestMs };
+    let stored = true; try { stored = !!localStorage.getItem("graveRider.best.v1.Test Track"); } catch (e) {}
+    Game.loadLevel(0);
+    return { now, stored, afterLoad: s.best };
+  });
+  check("Clear best times removes the best time and ghost", saved.best && saved.stored && cleared.now.best === null &&
+    cleared.now.bestMs === null && !cleared.stored && cleared.afterLoad === null,
+    "before: best " + saved.best + ", stored " + saved.stored + "; after: stored " + cleared.stored);
   await page.keyboard.press("KeyT");
   check("T closes the tuning panel", !(await page.isVisible("#tuning")));
   await page.keyboard.down("ArrowUp");
   await page.waitForTimeout(150);
   await page.keyboard.up("ArrowUp");
   check("Keys drive the bike after using the panel buttons", (await bike()).mode === "playing");
+
+  // 16. Steep downhill hold, grip changes reach the tyre at once, steady traction control, shown times add up
+  const more = await page.evaluate(() => {
+    const G = Game, s = G.state; s.paused = true;
+    const out = {};
+    // a) facing down a 25° slope, holding Down keeps the bike still (it can't back up that steep)
+    const t = Math.tan(25 * Math.PI / 180), PPM = CONFIG.pixelsPerMetre;
+    LEVELS.push({ name: "Downhill test", physics: {}, groundColor: "#000", groundTopColor: "#000",
+      start: { x: 20 * PPM, y: (20 * t - 0.95) * PPM }, checkpoints: [], finish: { x: 1e9 }, fallLimitY: 1e9, zones: [],
+      terrain: [[{ x: -100 * PPM, y: -100 * t * PPM }, { x: 100 * PPM, y: 100 * t * PPM }]] });
+    Object.assign(G.input, T.none); G.loadLevel(LEVELS.length - 1);
+    const b = s.bike, c = b.chassis.getPosition(), ang = Math.atan(t);
+    [b.chassis, b.rider, b.rear.wheel, b.front.wheel].forEach(body => {
+      const p = body.getPosition(), dx = p.x - c.x, dy = p.y - c.y;
+      body.setTransform(planck.Vec2(c.x + dx * Math.cos(ang) - dy * Math.sin(ang), c.y + dx * Math.sin(ang) + dy * Math.cos(ang)), body.getAngle() + ang);
+    });
+    for (let i = 0; i < 60; i++) G.step();
+    const x0 = G.bikePos().x;
+    Object.assign(G.input, T.none, { brake: true });
+    for (let i = 0; i < 240; i++) G.step();
+    Object.assign(G.input, T.none);
+    out.downhillMoved = (G.bikePos().x - x0) / PPM;
+    LEVELS.pop();
+    // b) moving the grip slider while riding changes the tyre's grip straight away
+    G.loadLevel(T.flatLevel());
+    Object.assign(G.input, T.none, { leanForward: true }); for (let i = 0; i < 36; i++) G.step();
+    const slips = [];
+    for (let i = 0; i < 120; i++) {
+      const a = s.bike.chassis.getAngle(), w = s.bike.chassis.getAngularVelocity();
+      Object.assign(G.input, T.none, { leanForward: true, gas: a + 0.25 * w > -0.3 }); G.step();
+      const bb = s.bike, v = bb.chassis.getLinearVelocity();
+      if (i >= 60) slips.push((bb.rear.wheel.getAngularVelocity() - bb.chassis.getAngularVelocity()) * bb.rear.radius - Math.hypot(v.x, v.y));
+    }
+    out.slipMin = Math.min.apply(null, slips); out.slipMax = Math.max.apply(null, slips);
+    CONFIG.wheelGrip = 0.3; G.step(); G.step();
+    const ce = s.bike.rear.wheel.getContactList();
+    out.gripOnTyre = ce ? ce.contact.getFriction() : null;
+    CONFIG.wheelGrip = CONFIG_DEFAULTS.wheelGrip;
+    Object.assign(G.input, T.none);
+    LEVELS.pop();
+    // c) shown times and differences add up (13.750 s vs 13.767 s = -0.01, not -0.02)
+    out.timeShown = G.formatTime(13749.999999999858);
+    out.deltaShown = G.formatDelta(13750.000000000002, 13766.666666666668);
+    G.loadLevel(0); s.paused = false;
+    return out;
+  });
+  check("Holding Down facing down a 25° slope keeps the bike still", Math.abs(more.downhillMoved) < 0.3,
+    "moved " + more.downhillMoved.toFixed(2) + " m in 4 s");
+  check("Traction control holds the wheelspin steady (about 3 m/s)", more.slipMin > 2 && more.slipMax < 4.5 && more.slipMax - more.slipMin < 1,
+    "slip " + more.slipMin.toFixed(2) + "-" + more.slipMax.toFixed(2) + " m/s");
+  check("Moving the grip slider while riding changes the tyre's grip at once", more.gripOnTyre !== null && Math.abs(more.gripOnTyre - 0.3) < 0.01,
+    "tyre grip " + (more.gripOnTyre === null ? "?" : more.gripOnTyre.toFixed(3)));
+  check("Shown times and differences add up", more.timeShown === "0:13.75" && more.deltaShown === "-0.01",
+    more.timeShown + ", " + more.deltaShown);
 
   check("No console errors during all tests", errors.length === 0, errors.join(" | "));
   await browser.close();

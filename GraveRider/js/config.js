@@ -32,7 +32,8 @@ var CONFIG = {
                              // adds ~0.5 when speeding up but only ~0.04 to how the bike twists in the air]
 
   // --- Brakes (rider uses front + rear together) ---
-  frontBrakeTorque: 1000,    // 260 mm disc, 2-piston caliper, N·m [ESTIMATE from disc size]
+  frontBrakeTorque: 750,     // 260 mm disc, 2-piston caliper, N·m [ESTIMATE: 560-910 from the caliper, disc and 12 mm
+                             // master cylinder owners report; still more than the tyre can hold, so it can lock]
   rearBrakeTorque: 450,      // 220 mm disc, 1-piston caliper, N·m [ESTIMATE from disc size]
 
   // --- Resistance ---
@@ -85,7 +86,7 @@ var CONFIG = {
   frontSpringRate: 10000,    // both fork springs, N/m along the fork [SPEC: 5.0 N/mm springs, the factory choice for a 198 lb rider in gear]
   rearSpringRate: 8700,      // at the wheel, N/m [ESTIMATE: 58 N/mm shock (factory choice for 198 lb) through the linkage]
   frontPreload: 0.008,       // spring pre-compression at full extension, m [ESTIMATE]
-  rearPreload: 0.0215,       // m [ESTIMATE: sets about 100 mm rider sag, 35 mm bike-only sag]
+  rearPreload: 0.0145,       // m [ESTIMATE: sets ~95 mm rider sag standing (~100-105 seated) and ~40 mm bike-only sag]
   frontDamping: 0.55,        // fraction of "no bounce" damping (1 = no bounce) [ESTIMATE]
   rearDamping: 0.6,          // [ESTIMATE]
   suspensionStiffness: 1.0,  // slider: multiplies both spring rates (1 = stock)

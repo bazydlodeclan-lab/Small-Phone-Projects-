@@ -43,11 +43,13 @@ const ROOT = path.join(__dirname, "..");
     const out = {};
 
     // ---- 1. Suspension sag ----
-    reset(); track([[-50, 0], [500, 0]], 0); settle(120);
+    // (wheels rolling free, as when riding: start the clock, then no controls)
+    reset(); track([[-50, 0], [500, 0]], 0); run({ brake: true }, 1); run({}, 300);
     out.sag = { rear: Bike.compression(s.bike.rear), front: Bike.compression(s.bike.front) };
     // bike alone (no rider)
     G.loadLevel(9);
     { const b = s.bike, m = CONFIG.riderMass;
+      b.legStops.forEach(j => b.world.destroyJoint(j)); b.world.destroyJoint(b.hips);
       b.world.destroyBody(b.rider); b.hips = null; CONFIG.riderMass = 0.001; // (damping uses riderMass)
       for (let i = 0; i < 240; i++) { Bike.suspension(b); b.world.step(DT, 20, 10); Bike.updateContacts(b); }
       CONFIG.riderMass = m;
@@ -221,7 +223,7 @@ const ROOT = path.join(__dirname, "..");
   L.push(`- Steepest hill the tyre could hold even at a crawl (if all weight were on the rear): atan(grip) = **${(Math.atan(C.wheelGrip) * 180 / Math.PI).toFixed(0)}°**. Real limit is lower because the front wheel lifts.`, "");
 
   L.push("## Suspension", "");
-  L.push(`- Sag with the rider standing still: rear **${(R.sag.rear * 1000).toFixed(0)} mm** (${(R.sag.rear / C.rearTravel * 100).toFixed(0)}% of travel), front **${(R.sag.front * 1000).toFixed(0)} mm** (${(R.sag.front / C.frontTravel * 100).toFixed(0)}%). Motocross target: 100–105 mm rear with the rider seated (about 94 mm standing).`);
+  L.push(`- Sag with the rider standing still (wheels rolling free): rear **${(R.sag.rear * 1000).toFixed(0)} mm** (${(R.sag.rear / C.rearTravel * 100).toFixed(0)}% of travel), front **${(R.sag.front * 1000).toFixed(0)} mm** (${(R.sag.front / C.frontTravel * 100).toFixed(0)}%). Motocross target: 100–105 mm rear with the rider seated (about 94 mm standing).`);
   L.push(`- Sag of the bike alone: rear **${(R.sag.bikeRear * 1000).toFixed(0)} mm**, front **${(R.sag.bikeFront * 1000).toFixed(0)} mm**. Target: 30–40 mm rear.`, "");
   L.push("| Drop onto flat ground | Rear travel used | Front travel used | Rider's legs bent | Peak g on the rider | Rider thrown off? |", "|---|---|---|---|---|---|");
   R.drops.forEach(d => L.push(`| ${d.h} m | ${(d.rear * 100).toFixed(0)}% | ${(d.front * 100).toFixed(0)}% | ${(Math.min(1, d.legs) * 100).toFixed(0)}% | ${d.g.toFixed(1)} g | ${d.crashed ? "yes" : "no"} |`));
@@ -256,10 +258,12 @@ const ROOT = path.join(__dirname, "..");
   L.push("", "Facing downhill most of the weight is on the front wheel, so the driven rear tyre spins on steeper slopes.", "");
 
   L.push("## How much leaning actually does (in the air, 1 second)", "");
-  L.push(`- **Real life (flip assist 0):** leaning back for 1 s turns the bike **${f0(Math.abs(R.lean.realBack.deg))}° nose-up**; leaning forward **${f0(Math.abs(R.lean.realFwd.deg))}° nose-down**.`);
-  L.push("  The rider and bike turn against each other (angular momentum is conserved), so a weight shift alone");
-  L.push("  can't flip the bike. Real backflips come from the take-off ramp and the throttle/brake.");
-  L.push(`- **Game default (flip assist ${C.flipAssist} N·m, in the air only):** leaning back for 1 s turns the bike **${f0(Math.abs(R.lean.assistBack.deg))}°**.`, "");
+  const turn = (deg) => `${f0(Math.abs(deg))}° ${deg > 0 ? "nose-down" : "nose-up"}`; // (angle + = clockwise = nose down)
+  L.push(`- **Real life (flip assist 0):** leaning back for 1 s turns the bike **${turn(R.lean.realBack.deg)}**; leaning forward **${turn(R.lean.realFwd.deg)}**.`);
+  L.push("  The rider and bike turn against each other (angular momentum is conserved): throwing your body back");
+  L.push("  tips the bike the other way, and only a little, so a weight shift alone can't flip the bike.");
+  L.push("  Real backflips come from the take-off ramp and the throttle/brake.");
+  L.push(`- **Game default (flip assist ${C.flipAssist} N·m, in the air only):** leaning back for 1 s turns the bike **${turn(R.lean.assistBack.deg)}**.`, "");
   L.push("## Throttle and brake in the air (0.5 s, leaving a jump at 40 km/h)", "");
   L.push(`- Rear brake: nose drops **${f0(-R.airWheel.brake)}°** (the spinning wheel's momentum moves into the bike).`);
   L.push(`- Throttle pinned: nose rises **${f0(R.airWheel.throttleRaw)}°** (real riders use this to lift the front).`);

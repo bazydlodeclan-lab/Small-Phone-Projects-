@@ -377,8 +377,9 @@ var Game = (function () {
         state.checkpoint = level.checkpoints[i];
         state.splits[i] = raceTimeMs();
         var bestSplit = state.best ? state.best.splits[i] : null;
-        state.split = { label: "CHECKPOINT " + (i + 1), timeMs: state.splits[i],
-          deltaMs: typeof bestSplit === "number" ? state.splits[i] - bestSplit : null, age: 0 };
+        var hasBest = typeof bestSplit === "number";
+        state.split = { label: "CHECKPOINT " + (i + 1), timeMs: state.splits[i], bestMs: hasBest ? bestSplit : null,
+          deltaMs: hasBest ? state.splits[i] - bestSplit : null, age: 0 };
         popup("CHECKPOINT", "#7dff9a");
       }
     }
@@ -399,7 +400,7 @@ var Game = (function () {
     }
     state.result = { timeMs: time, clockMs: state.timeMs, previousBestMs: best ? best.timeMs : null,
       deltaMs: best ? time - best.timeMs : null, newBest: newBest, tuned: tuned, saved: saved };
-    state.split = { label: "FINISH", timeMs: time, deltaMs: state.result.deltaMs, age: 0 };
+    state.split = { label: "FINISH", timeMs: time, bestMs: state.result.previousBestMs, deltaMs: state.result.deltaMs, age: 0 };
   }
 
   // ---------------------------------------------------
@@ -592,15 +593,20 @@ var Game = (function () {
     return best;
   }
 
+  // A time in whole hundredths of a second, the way it is shown
+  // (13749.9999999 ms is 13.75 s, not 13.74)
+  function hundredths(ms) { return Math.floor(Math.round(ms * 1000) / 10000); }
+
   function formatTime(ms) {
-    ms = Math.round(ms * 1000) / 1000; // 13749.9999999 ms is 13.75 s, not 13.74
-    var m = Math.floor(ms / 60000), s = Math.floor(ms / 1000) % 60, cs = Math.floor(ms / 10) % 100;
+    var t = hundredths(ms), m = Math.floor(t / 6000), s = Math.floor(t / 100) % 60, cs = t % 100;
     return m + ":" + (s < 10 ? "0" : "") + s + "." + (cs < 10 ? "0" : "") + cs;
   }
 
-  // +0.42 (slower than your best) or -0.31 (faster)
-  function formatDelta(ms) {
-    return (ms < 0 ? "-" : "+") + (Math.abs(ms) / 1000).toFixed(2);
+  // +0.42 (slower than the other time) or -0.31 (faster), worked out from the
+  // two times as shown, so the numbers on screen always add up
+  function formatDelta(ms, otherMs) {
+    var d = hundredths(ms) - hundredths(otherMs);
+    return (d < 0 ? "-" : "+") + (Math.abs(d) / 100).toFixed(2);
   }
 
   // Speed and distance in the units chosen in config.js
@@ -637,7 +643,7 @@ var Game = (function () {
       if (sp.deltaMs === null) { ctx.fillStyle = "#fff"; ctx.fillText(formatTime(sp.timeMs), 24, 170); }
       else {
         ctx.fillStyle = sp.deltaMs <= 0 ? "#7dff9a" : "#ff6b6b";
-        ctx.fillText(formatDelta(sp.deltaMs), 24, 170);
+        ctx.fillText(formatDelta(sp.timeMs, sp.bestMs), 24, 170);
       }
     }
 
@@ -676,9 +682,13 @@ var Game = (function () {
       ctx.fillText("Press any control to start", viewW / 2, viewH * 0.3);
     }
     if (state.mode === "ready" || (state.timeMs < 6000 && state.mode === "playing")) {
+      var hint = "UP/W gas   DOWN/S brake + reverse   LEFT/A lean back   RIGHT/D lean forward   R restart   T tuning";
       ctx.fillStyle = "rgba(255,255,255,0.7)";
       ctx.font = "15px monospace";
-      ctx.fillText("UP/W gas   DOWN/S brake + reverse   LEFT/A lean back   RIGHT/D lean forward   R restart   T tuning", viewW / 2, viewH - 24);
+      var hw = ctx.measureText(hint).width;
+      if (hw > viewW - 24) { ctx.font = "11px monospace"; hw = ctx.measureText(hint).width; }
+      // keep it clear of the speedometer (bottom right)
+      ctx.fillText(hint, viewW / 2, viewW / 2 + hw / 2 > viewW - 184 ? viewH - 100 : viewH - 24);
     }
 
     if (state.mode === "finished") drawFinish();
@@ -687,22 +697,27 @@ var Game = (function () {
   // Finish screen: your time against your best, and stats of the ride
   function drawFinish() {
     var r = state.result, s = state.stats;
-    var w = Math.min(480, viewW - 24), h = 430;
-    var x = (viewW - w) / 2, y = Math.max(12, (viewH - h) / 2 - 20);
+    var w = 480, h = 430;
+    // Shrink the whole panel to fit small windows
+    var k = Math.min(1, (viewW - 24) / w, (viewH - 24) / h);
+    ctx.save();
+    ctx.translate((viewW - w * k) / 2, Math.max(12, (viewH - h * k) / 2 - 20 * k));
+    ctx.scale(k, k);
+    var x = 0, y = 0, cx = w / 2;
     ctx.fillStyle = "rgba(5, 3, 20, 0.85)";
     ctx.fillRect(x, y, w, h);
     ctx.textAlign = "center";
     ctx.fillStyle = "#ff8a1f";
     ctx.font = "bold 44px sans-serif";
-    ctx.fillText("FINISH!", viewW / 2, y + 54);
+    ctx.fillText("FINISH!", cx, y + 54);
 
     var verdict, color;
     if (r.previousBestMs === null) { verdict = "FIRST TIME SET"; color = "#7dff9a"; }
-    else if (r.newBest) { verdict = "NEW BEST!  " + formatDelta(r.deltaMs); color = "#7dff9a"; }
-    else { verdict = formatDelta(r.deltaMs) + " slower than your best"; color = "#ff6b6b"; }
+    else if (r.newBest) { verdict = "NEW BEST!  " + formatDelta(r.timeMs, r.previousBestMs); color = "#7dff9a"; }
+    else { verdict = formatDelta(r.timeMs, r.previousBestMs) + " slower than your best"; color = "#ff6b6b"; }
     ctx.fillStyle = color;
     ctx.font = "bold 22px sans-serif";
-    ctx.fillText(verdict, viewW / 2, y + 88);
+    ctx.fillText(verdict, cx, y + 88);
 
     var clockS = r.clockMs / 1000;
     var rows = [
@@ -730,12 +745,13 @@ var Game = (function () {
       : r.newBest && !r.saved ? "Your browser blocked saving: this best time lasts until you close the page" : "";
     if (note) {
       ctx.fillStyle = "#ffd23f";
-      ctx.font = "14px sans-serif";
-      ctx.fillText(note, viewW / 2, y + h - 52);
+      ctx.font = "13px sans-serif";
+      ctx.fillText(note, cx, y + h - 52);
     }
     ctx.fillStyle = "#ffd23f";
     ctx.font = "bold 22px sans-serif";
-    ctx.fillText("Press R to ride again", viewW / 2, y + h - 20);
+    ctx.fillText("Press R to ride again", cx, y + h - 20);
+    ctx.restore();
   }
 
   // ---------------------------------------------------
@@ -768,6 +784,7 @@ var Game = (function () {
   // Exposed so the tuning panel and automated tests can read the game
   return { state: state, input: input, world: world, step: step, bikePos: bikePos, bikeVel: bikeVel,
     loadLevel: loadLevel, spawnBike: spawnBike, camera: camera, raceTimeMs: raceTimeMs, ghostPose: ghostPose,
+    formatTime: formatTime, formatDelta: formatDelta,
     clearBest: function () { Records.clear(); state.best = null; state.bestMs = null; } };
 })();
 
@@ -828,6 +845,7 @@ var Tuning = (function () {
       var ok = false;
       try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
       status.textContent = ok ? "Copied!" : "Select the text below and press Ctrl+C";
+      if (ok) out.blur(); // give the keys back to the game (T, R, arrows)
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { status.textContent = "Copied!"; }, fallback);

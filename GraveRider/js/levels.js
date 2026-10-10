@@ -120,9 +120,10 @@ var LEVELS = [
         // Landing ramp: 40° back face (climbable if you come up short)
         [{ x: 7867, y: -140 }, { x: 7920, y: -140 }],
         Shapes.curve(7920, -140, 8800, 0, 20),
-        Shapes.line(8800, 0, 9600, 0),
+        // Run-out: room to brake to a stop after the finish (about 50 m)
+        Shapes.line(8800, 0, 12200, 0),
         // End wall so you can't drive off the world
-        [{ x: 9800, y: -600 }]
+        [{ x: 12400, y: -600 }]
       )
     ],
 

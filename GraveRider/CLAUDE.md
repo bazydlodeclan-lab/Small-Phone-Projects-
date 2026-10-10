@@ -66,7 +66,7 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 | `js/bike.js` | `Bike`: builds the bike (chassis, 2 wheels on wheel joints, rider body on a hip joint), controls (motor, traction control, throttle help, brakes, reverse, lean, flip assist), suspension (springs, bottoming cushion, anti-squat), crash let-go, ground contact + drive force, drawing from a "pose" (so the ghost uses the same drawing). |
 | `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain (Planck chain shapes), physics zones, race flow (ready → playing → crashed/finished), flips, ride stats, checkpoint splits, `Records` (best times in localStorage, wrapped in try/catch), ghost recording/playback, camera, input, drawing, HUD, finish screen. Also `Tuning` (the T panel: sliders, Copy settings, Reset, Clear best times). |
 | `art/` | `bike.svg`, `wheel.svg` (front), `rear-wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
-| `tests/run-tests.js` | Automated Playwright tests (50 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
+| `tests/run-tests.js` | Automated Playwright tests (55 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
 | `tests/physics-report.js` | Runs physics experiments (sag, drops, acceleration, braking, hill climbs, reversing, leaning, throttle/brake in the air) and writes `PHYSICS_REPORT.md`. Re-run after changing `config.js`. |
 
 ### Level data format (`js/levels.js`)
@@ -88,9 +88,8 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 - Physics in use = defaults → level `physics` → the zone the bike is in.
   `gravityScale` multiplies 9.81 m/s² × `CONFIG.gravity`; `friction` multiplies
   `CONFIG.wheelGrip`; `bounce` is set on the tyres (0 = none, 1 = very bouncy).
-  Known limit: Planck keeps a contact's friction from when it started, so a zone's
-  `friction` only applies once a tyre leaves the ground and lands again (owner said
-  no grip features for now).
+  (Planck keeps a contact's friction from when it started, so `applyTuning` resets
+  the tyres' existing contacts whenever grip or bounce changes.)
 - Design jumps for real scale: at 15 m/s a steep "kicker" lip launches the bike very
   high and spins it. Gentle ramps and tabletops ride better; hills over ~40° are hard.
 
@@ -115,8 +114,9 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
   wheel + the chassis turning (lever² ÷ inertia). Leaving the turning part out made
   the springs only 74% (rear) / 88% (front) as stiff as set. Factory springs for a
   198 lb rider in gear (fork 2 × 5.0 N/mm, shock 58 N/mm ≈ 8.7 N/mm at the wheel)
-  give ~96 mm rear sag standing and ~33 mm bike-only. Preload = the spring's rest
-  point is set beyond full extension. Two `RopeJoint`s per wheel are the hard stops, plus a
+  give ~95 mm rear / ~69 mm front sag with the rider standing and ~40 / 34 mm
+  bike-only (measured with the wheels rolling free — locked brakes change it).
+  Preload = the spring's rest point is set beyond full extension. Two `RopeJoint`s per wheel are the hard stops, plus a
   bottoming cushion (last 15% of travel, 8× stiffer). The rear wheel slides on a
   straight line (no swingarm/chain), so `antiSquat` (0.85; the slider's tilt adds
   ~18%, so ~100% total) adds the chain + swingarm force that stops the rear squatting
@@ -126,12 +126,16 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
   front unloads the fork extends and tips the nose up further, so with grip 0.85
   neutral full throttle loops out in ~1 s, while leaning forward first holds the
   front down (pressing gas and lean together still lifts it: the shift takes ~0.35 s).
-- Throttle: traction control (the real bike has it) keeps rear wheelspin ≤ 3 m/s.
+- Throttle: traction control (the real bike has it) holds rear wheelspin at about
+  3-3.5 m/s (its power share eases toward the target instead of switching each step).
   `throttleControl` = rider throttle help, 0..1, default 0 (real life); it eases the
   throttle in steep wheelies and holds it steady in the air. When the rear wheel
-  lifts under braking the front brake is eased and the rear brake let go (locking
-  the lifted, spinning rear wheel throws its spin into the frame: endo). Down: brakes, then reverse once
-  stopped (4 m/s, 500 N·m — a game choice; facing downhill it can back up ~15°).
+  lifts under braking (a stoppie) the rear brake is let go (locking the lifted,
+  spinning wheel throws its spin into the frame) and the front brake eases right off
+  as the nose drops, so the rear comes back down — upright from any speed, 60-145 km/h.
+  Down: brakes, then reverse once stopped (4 m/s, 500 N·m — a game choice; facing
+  downhill it backs up slopes to ~15°; on steeper downhills the front brake holds
+  it still instead).
 - The rider is one body (whole-body mass and inertia set with `setMassData`: centre
   0.84 m above the pegs, I 12.5 kg·m²) on a "legs" joint at the footpegs (a Planck
   WheelJoint): a spring + damper along the bike's up/down line (legs bending, 15 kN/m,
@@ -173,6 +177,10 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 - Camera moves once per physics step (same feel at 60 and 144 Hz).
 - Level design at this bike's speed: it reaches ~85 km/h on short straights, so
   hill faces become launch ramps — leave run-out room and give jumps long landings.
+  Leave about 50 m (3200 px) of flat after the finish line: the rider brakes to a
+  stop there (from 90 km/h that takes ~45 m).
+- Times are shown in whole hundredths, and differences (splits, finish vs best) are
+  worked out from the shown times so they always add up.
 
 ## Week 1 status
 Done: physics engine Planck.js; bike modelled on real electric MX bike specs (motor
@@ -182,7 +190,7 @@ level system with zones; test level ("Test Track"); time-trial flow (clock start
 first input, crash/finish rules, live flip counting with time bonus); HUD with speed,
 best time and checkpoint splits; ghost of your best run; finish screen with ride
 stats; rider legs that soak up landings (too-hard landings crash); camera; tuning
-panel; swappable art; physics report; 50/50 automated tests.
+panel; swappable art; physics report; 55/55 automated tests.
 
 Known things to handle in Week 2:
 - Build the 4 levels with the "normal theme for now" look (ask before adding themes).

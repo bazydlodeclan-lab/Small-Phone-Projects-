@@ -175,6 +175,9 @@ var Bike = (function () {
       riderHit: false,
       crashed: false,
       groundAngle: 0, // slope under the rear tyre (radians, 0 = flat)
+      traction: 1,    // traction control's power share (0.15..1)
+      mu: null,       // grip and bounce last set on the tyres (see applyTuning)
+      bounce: null,
       rearDrive: 0    // forward push of the ground on the rear tyre last step (N)
     };
     suspension(bike);
@@ -206,10 +209,18 @@ var Bike = (function () {
   // coefficient exactly wheelGrip × the level's friction.
   function applyTuning(bike, surfaceFriction, bounce) {
     var mu = CONFIG.wheelGrip * surfaceFriction;
+    if (bike.mu === mu && bike.bounce === bounce) return;
+    bike.mu = mu; bike.bounce = bounce;
     [bike.rear.wheel, bike.front.wheel].forEach(function (w) {
       var f = w.getFixtureList();
       f.setFriction(mu * mu);
       f.setRestitution(bounce);
+      // A contact keeps the friction it started with, so update the ones
+      // already touching (otherwise a change only applies after a jump)
+      for (var ce = w.getContactList(); ce; ce = ce.next) {
+        ce.contact.resetFriction();
+        ce.contact.resetRestitution();
+      }
     });
   }
 
@@ -324,8 +335,11 @@ var Bike = (function () {
     var surface = (bike.rear.wheel.getAngularVelocity() - c.getAngularVelocity()) * bike.rear.radius;
     var slip = surface - Math.hypot(vel.x, vel.y);
     var allowed = CONFIG.maxWheelspin;
-    if (slip <= allowed) return 1;
-    return Math.max(0.15, 1 - (slip - allowed) / 3);
+    var target = slip <= allowed ? 1 : Math.max(0.15, 1 - (slip - allowed));
+    // Ease towards it instead of jumping (one full-torque step adds about
+    // 3 m/s of slip, so jumping would switch the power on and off every step)
+    bike.traction += (target - bike.traction) * 0.25;
+    return bike.traction;
   }
 
   function wheelieControl(bike) {
@@ -377,7 +391,15 @@ var Bike = (function () {
         // (and let go of the rear brake: stopping the lifted, spinning rear
         // wheel would throw its spin into the frame and flip the bike)
         var front = CONFIG.frontBrakeTorque, rear = CONFIG.rearBrakeTorque;
-        if (bike.frontOnGround && bike.rearAir > 2) { front *= 0.25; rear = 0; }
+        if (bike.frontOnGround && bike.rearAir > 2) {
+          // Rear wheel up (a "stoppie"): ease the front brake right off as the
+          // nose goes down, and off completely while it is still dropping, so
+          // the rear comes back down instead of going over the bars
+          var a = c.getAngle() - bike.groundAngle;
+          var noseDown = Math.atan2(Math.sin(a), Math.cos(a));
+          front *= c.getAngularVelocity() > 0 ? 0 : Math.max(0, 0.25 * (1 - noseDown / 0.1));
+          rear = 0;
+        }
         rearJ.enableMotor(true); rearJ.setMotorSpeed(0); rearJ.setMaxMotorTorque(rear);
         frontJ.enableMotor(true); frontJ.setMotorSpeed(0); frontJ.setMaxMotorTorque(front);
       } else {
@@ -385,7 +407,13 @@ var Bike = (function () {
         rearJ.enableMotor(true);
         rearJ.setMotorSpeed(-CONFIG.reverseSpeed / Rr);
         rearJ.setMaxMotorTorque(CONFIG.reverseTorque);
-        frontJ.enableMotor(false);
+        // If it still rolls forward (a downhill too steep to back up), the
+        // front brake holds it instead of letting it creep down
+        if (forwardSpeed > 0.02) {
+          frontJ.enableMotor(true); frontJ.setMotorSpeed(0); frontJ.setMaxMotorTorque(CONFIG.frontBrakeTorque);
+        } else {
+          frontJ.enableMotor(false);
+        }
       }
     } else {
       // Off the throttle: a little motor drag on the rear wheel [ESTIMATE]
