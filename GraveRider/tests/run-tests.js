@@ -271,11 +271,11 @@ function installHelpers() {
   // 7. Backflip off a real-size double: counts mid-air and takes time off your time
   const flip = await page.evaluate(() => {
     const s = Game.state; s.paused = true;
-    const r = T.doubleJumpBackflip(60);
+    const r = T.doubleJumpBackflip(65);
     Game.loadLevel(0); s.paused = false;
     return r;
   });
-  check("Backflip off the big double (35 mph take-off, default flip assist)", flip.backflips === 1 && flip.crashes === 0 && flip.mode === "finished",
+  check("Backflip off the big double (about 38 mph take-off, default flip assist)", flip.backflips === 1 && flip.crashes === 0 && flip.mode === "finished",
     "backflips " + flip.backflips + ", crashes " + flip.crashes + ", " + flip.mode);
   check("The flip counts mid-air and takes 0.5 s off your time", flip.flipInAir && flip.bonus === 500 && Math.abs(flip.race - (flip.timeMs - 500)) < 1e-6,
     "counted in the air: " + flip.flipInAir + ", time " + (flip.race / 1000).toFixed(2) + " s = clock " + (flip.timeMs / 1000).toFixed(2) + " - 0.5");
@@ -462,7 +462,94 @@ function installHelpers() {
     extra.reachedCp === 0 && extra.crashedAfterCp && Math.abs(extra.respawnX - extra.cpX) < 60 && extra.mode === "playing",
     "respawned at x " + Math.round(extra.respawnX) + " (checkpoint " + extra.cpX + ")");
 
-  // 12. R restarts the level
+  // 12. Review fixes: fast finish and hard braking stay upright, tuned-then-reset runs,
+  //     damaged save files, frame-on-the-ground counts as ground
+  const fixes = await page.evaluate(() => {
+    const G = Game, s = G.state; s.paused = true;
+    const kmh = () => Math.hypot(G.bikeVel().x, G.bikeVel().y) / CONFIG.pixelsPerMetre * 3.6;
+    const tilt = () => { const a = s.bike.chassis.getAngle(); return Math.abs(Math.atan2(Math.sin(a), Math.cos(a))); };
+    function straight(finishX) {
+      LEVELS.push({ name: "Straight test", physics: {}, groundColor: "#6b4f3a", groundTopColor: "#a07e5e",
+        start: { x: 0, y: -40 }, checkpoints: [], finish: { x: finishX }, fallLimitY: 900, zones: [],
+        terrain: [[{ x: -600, y: 0 }, { x: 40000, y: 0 }]] });
+      Object.assign(G.input, T.none);
+      G.loadLevel(LEVELS.length - 1);
+      Object.assign(G.input, T.none, { leanForward: true });
+      for (let i = 0; i < 36; i++) G.step(); // lean first
+    }
+    function speedUp(target, stopX) {
+      for (let i = 0; i < 60 * 20 && kmh() < target && G.bikePos().x < stopX && s.mode === "playing"; i++) {
+        const a = s.bike.chassis.getAngle(), w = s.bike.chassis.getAngularVelocity();
+        Object.assign(G.input, T.none, { leanForward: true, gas: a + 0.25 * w > -0.3 });
+        G.step();
+      }
+    }
+    const out = {};
+    // a) cross the finish flat out (about 120 km/h)
+    straight(14000);
+    speedUp(200, 14000);
+    for (let i = 0; i < 60 * 10 && s.mode === "playing"; i++) { Object.assign(G.input, T.none, { gas: true, leanForward: true }); G.step(); }
+    out.finishKmh = kmh(); out.finishMode = s.mode;
+    let worst = 0;
+    for (let i = 0; i < 600; i++) { G.step(); worst = Math.max(worst, tilt()); }
+    out.finishWorstTilt = worst; out.finishEndKmh = kmh();
+    LEVELS.pop();
+    // b) hold the brake at 110 km/h
+    straight(1e9);
+    speedUp(110, 1e9);
+    out.brakeFrom = kmh();
+    worst = 0;
+    for (let i = 0; i < 300 && s.mode === "playing"; i++) { Object.assign(G.input, T.none, { brake: true }); G.step(); worst = Math.max(worst, tilt()); }
+    out.brakeMode = s.mode; out.brakeWorstTilt = worst;
+    Object.assign(G.input, T.none);
+    LEVELS.pop();
+    // c) change a slider during the run, put it back, then finish
+    G.clearBest(); G.loadLevel(0);
+    Object.assign(G.input, { gas: true }); G.step(); Object.assign(G.input, T.none);
+    CONFIG.gravity = 0.5; G.step(); G.step();
+    CONFIG.gravity = CONFIG_DEFAULTS.gravity;
+    G.spawnBike({ x: s.level.finish.x + 50, y: -40 }); G.step();
+    out.tunedResult = s.result; out.tunedBest = s.bestMs;
+    // d) a damaged save file (no splits) is ignored instead of freezing the game
+    try { localStorage.setItem("graveRider.best.v1.Test Track", JSON.stringify({ timeMs: 30000, ghost: { every: 2, frames: [[0,0,0,0,0,0,0,0,0,0,0,0,0]] } })); } catch (e) {}
+    G.loadLevel(0);
+    out.damagedBest = s.best;
+    Object.assign(G.input, { gas: true });
+    let threw = "";
+    try { G.spawnBike({ x: s.level.checkpoints[0].x - 30, y: -40 }); for (let i = 0; i < 30; i++) G.step(); } catch (e) { threw = e.message; }
+    out.damagedThrew = threw;
+    Object.assign(G.input, T.none);
+    try { localStorage.removeItem("graveRider.best.v1.Test Track"); } catch (e) {}
+    // e) frame touching the ground (wheels in the air) = on the ground: no air time, no flip assist
+    const realUpdate = Bike.updateContacts;
+    function belly(assist) {
+      CONFIG.flipAssist = assist; G.loadLevel(0);
+      for (let i = 0; i < 30; i++) G.step();
+      Bike.updateContacts = function (b) { realUpdate(b); b.rearAir = b.frontAir = 99; b.rearOnGround = b.frontOnGround = false; b.bodyOnGround = true; };
+      Object.assign(G.input, T.none, { leanBack: true });
+      for (let i = 0; i < 60; i++) G.step();
+      Bike.updateContacts = realUpdate;
+      Object.assign(G.input, T.none);
+      return { angle: s.bike.chassis.getAngle(), airMs: s.stats.airMs };
+    }
+    const b1 = belly(3000), b0 = belly(0);
+    CONFIG.flipAssist = CONFIG_DEFAULTS.flipAssist;
+    out.bellyAssistDiff = b1.angle - b0.angle; out.bellyAirMs = b1.airMs;
+    G.loadLevel(0); s.paused = false;
+    return out;
+  });
+  check("Crossing the finish flat out: the bike brakes to a stop upright", fixes.finishMode === "finished" && fixes.finishKmh > 100 &&
+    fixes.finishWorstTilt < 0.6 && fixes.finishEndKmh < 1,
+    Math.round(fixes.finishKmh) + " km/h at the line, worst tilt " + (fixes.finishWorstTilt * 57.3).toFixed(0) + "°");
+  check("Holding the brake at 110 km/h doesn't throw the rider over the bars", fixes.brakeMode === "playing" && fixes.brakeWorstTilt < 0.8,
+    "from " + Math.round(fixes.brakeFrom) + " km/h, worst tilt " + (fixes.brakeWorstTilt * 57.3).toFixed(0) + "°, " + fixes.brakeMode);
+  check("Changing a slider mid-run, then putting it back, still doesn't save the run", fixes.tunedResult && fixes.tunedResult.tuned &&
+    !fixes.tunedResult.saved && fixes.tunedBest === null, JSON.stringify(fixes.tunedResult));
+  check("A damaged save file is ignored (the game keeps running)", fixes.damagedBest === null && fixes.damagedThrew === "", fixes.damagedThrew);
+  check("Bike frame touching the ground counts as on the ground (no air time, no flip assist)",
+    Math.abs(fixes.bellyAssistDiff) < 1e-6 && fixes.bellyAirMs === 0, "assist difference " + fixes.bellyAssistDiff.toExponential(1) + ", air " + fixes.bellyAirMs + " ms");
+
+  // 13. R restarts the level
   await page.keyboard.press("KeyR");
   await page.waitForTimeout(200);
   const r = await bike();

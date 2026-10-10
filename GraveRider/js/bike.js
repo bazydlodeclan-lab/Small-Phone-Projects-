@@ -148,6 +148,7 @@ var Bike = (function () {
       front: front,
       rearOnGround: false,
       frontOnGround: false,
+      bodyOnGround: false, // the frame itself is touching the ground (stuck on its belly)
       rearAir: 99,   // steps since each wheel last touched the ground
       frontAir: 99,
       riderHit: false,
@@ -166,6 +167,11 @@ var Bike = (function () {
 
   function onGround(bike) {
     return bike.rearOnGround || bike.frontOnGround;
+  }
+
+  // Anything of the bike touching the ground (wheels or the frame) = not in the air
+  function touching(bike) {
+    return onGround(bike) || bike.bodyOnGround;
   }
 
   // How far each end is squashed from full extension (m)
@@ -187,15 +193,20 @@ var Bike = (function () {
   }
 
   // --- Suspension springs and dampers. Called every step. ---
-  // Planck describes a spring by how fast it would bounce the wheel alone,
-  // so convert the real spring rate (N/m) and damping into its terms.
+  // Planck describes a spring by how fast it would bounce the mass it sees
+  // along the suspension line (chassis + wheel, including the chassis
+  // turning), so convert the real spring rate (N/m) and damping into that.
   function suspension(bike) {
     var sprungTotal = CONFIG.bikeMass - CONFIG.frontWheelMass - CONFIG.rearWheelMass + CONFIG.riderMass;
+    var c = bike.chassis, com = c.getWorldCenter();
+    var Ic = c.getInertia() - c.getMass() * Vec2.lengthSquared(c.getLocalCenter()); // about its centre of mass
     [[bike.rear, CONFIG.rearSpringRate, CONFIG.rearDamping, 0.55],
      [bike.front, CONFIG.frontSpringRate, CONFIG.frontDamping, 0.45]].forEach(function (e) {
       var s = e[0], k = e[1] * CONFIG.suspensionStiffness, zeta = e[2];
       var sprung = sprungTotal * e[3];   // weight carried by this end [ESTIMATE: 55% rear]
-      var mEff = 1 / (1 / bike.chassis.getMass() + 1 / s.wheel.getMass());
+      var ax = c.getWorldVector(v(s.axis)), w = s.wheel.getPosition();
+      var lever = (w.x - com.x) * ax.y - (w.y - com.y) * ax.x; // how much a push along the line turns the chassis
+      var mEff = 1 / (1 / c.getMass() + 1 / s.wheel.getMass() + lever * lever / Ic);
       s.joint.setSpringFrequencyHz(Math.sqrt(k / mEff) / (2 * Math.PI));
       s.joint.setSpringDampingRatio(zeta * Math.sqrt(sprung / mEff));
 
@@ -325,9 +336,11 @@ var Bike = (function () {
       if (forwardSpeed > 0.5 || input.holdStill) {
         // Front and rear brakes. Like a real rider, ease the front brake
         // when the rear wheel starts lifting (stops you going over the bars)
-        var front = CONFIG.frontBrakeTorque;
-        if (bike.frontOnGround && bike.rearAir > 2) front *= 0.25;
-        rearJ.enableMotor(true); rearJ.setMotorSpeed(0); rearJ.setMaxMotorTorque(CONFIG.rearBrakeTorque);
+        // (and let go of the rear brake: stopping the lifted, spinning rear
+        // wheel would throw its spin into the frame and flip the bike)
+        var front = CONFIG.frontBrakeTorque, rear = CONFIG.rearBrakeTorque;
+        if (bike.frontOnGround && bike.rearAir > 2) { front *= 0.25; rear = 0; }
+        rearJ.enableMotor(true); rearJ.setMotorSpeed(0); rearJ.setMaxMotorTorque(rear);
         frontJ.enableMotor(true); frontJ.setMotorSpeed(0); frontJ.setMaxMotorTorque(front);
       } else {
         // Stopped: the motor drives backwards (strong enough to back up a hill)
@@ -356,7 +369,7 @@ var Bike = (function () {
 
     // Flip assist: a little extra turning in the air so flips are possible
     // (0 = real life). Never on the ground, so wheelies stay real.
-    if (lean !== 0 && CONFIG.flipAssist > 0 && !onGround(bike)) {
+    if (lean !== 0 && CONFIG.flipAssist > 0 && !touching(bike)) {
       var wSpin = c.getAngularVelocity();
       if (!(Math.abs(wSpin) >= CONFIG.maxSpinSpeed && Math.sign(wSpin) === lean)) {
         c.applyTorque(lean * CONFIG.flipAssist, true);
@@ -428,6 +441,7 @@ var Bike = (function () {
     bike.frontAir = touchesGround(bike.front.wheel) ? 0 : bike.frontAir + 1;
     bike.rearOnGround = bike.rearAir < CONTACT_GRACE_STEPS;
     bike.frontOnGround = bike.frontAir < CONTACT_GRACE_STEPS;
+    bike.bodyOnGround = touchesGround(bike.chassis);
     // The rider's head or body hitting the ground = crash
     bike.riderHit = touchesGround(bike.rider, ["head", "torso"]);
   }
@@ -552,6 +566,7 @@ var Bike = (function () {
     updateContacts: updateContacts,
     applyTuning: applyTuning,
     onGround: onGround,
+    touching: touching,
     loadArt: loadArt,
     poseOf: poseOf,
     draw: draw,

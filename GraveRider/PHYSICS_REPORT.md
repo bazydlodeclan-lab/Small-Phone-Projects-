@@ -7,22 +7,23 @@ game's own physics engine (Planck.js) with the bike set up as in `js/config.js`:
 ## Quick physics check (pen-and-paper)
 
 - Most acceleration the tyre can give on dirt: grip × g = **8.3 m/s²**.
-- What the motor alone could push: 978 N·m ÷ 0.341 m ÷ 208 kg = **13.8 m/s²**.
+- What the motor alone could push: 978 N·m ÷ 0.34 m ÷ 208 kg = **13.8 m/s²**.
 - So below about 75 km/h the bike has more torque than the tyre or
   the wheelie limit can use. It is limited by grip and by the front wheel lifting, not by the motor.
 - Steepest hill the tyre could hold even at a crawl (if all weight were on the rear): atan(grip) = **40°**. Real limit is lower because the front wheel lifts.
 
 ## Suspension
 
-- Sag with the rider standing still: rear **114 mm** (38% of travel), front **50 mm** (16%). Typical motocross race sag is ~100 mm rear.
+- Sag with the rider standing still: rear **97 mm** (32% of travel), front **44 mm** (14%). Motocross target: 100–105 mm rear with the rider seated (about 94 mm standing).
+- Sag of the bike alone: rear **32 mm**, front **35 mm**. Target: 30–40 mm rear.
 
 | Drop onto flat ground | Rear travel used | Front travel used | Rider crashes? |
 |---|---|---|---|
-| 0.5 m | 84% | 48% | no |
-| 1 m | 100% | 65% | no |
-| 2 m | 100% | 80% | no |
-| 3 m | 100% | 100% | no |
-| 5 m | 102% | 105% | no |
+| 0.5 m | 67% | 42% | no |
+| 1 m | 89% | 58% | no |
+| 2 m | 100% | 73% | no |
+| 3 m | 100% | 98% | no |
+| 5 m | 100% | 104% | no |
 
 Over 100% means it hit the bottoming stop (a real bike would bottom out too).
 The rider's legs are not modelled as springs, so landings here are a bit harsher than real life
@@ -32,9 +33,9 @@ The rider's legs are not modelled as springs, so landings here are a bit harsher
 
 | | 0–50 km/h | 0–100 km/h | Distance in 5 s | Highest wheelie | Top speed reached | Flipped over? |
 |---|---|---|---|---|---|---|
-| Real life (game default): rider leans forward first | 2.0 s | 4.3 s | 84 m | 2° | 144 km/h | no |
-| Real life: neutral stance, throttle pinned | — | — | — | 159° | 27 km/h | yes, after 1.1 s |
-| Rider throttle help = 1 (T panel) | 2.7 s | 5.9 s | 65 m | 21° | 145 km/h | no |
+| Real life (game default): rider leans forward first | 2.1 s | 4.5 s | 81 m | 2° | 144 km/h | no |
+| Real life: neutral stance, throttle pinned | — | — | — | 153° | 28 km/h | yes, after 1.1 s |
+| Rider throttle help = 1 (T panel) | 2.6 s | 6.0 s | 65 m | 21° | 144 km/h | no |
 
 Steady top speed on flat ground from power vs drag: 145 km/h (capped by the motor's max speed).
 Why leaning forward matters: the front starts to lift when grip nears (distance from the rear tyre to the centre
@@ -45,28 +46,28 @@ Leaning has to come first: a real rider needs about 0.35 s to shift their weight
 
 ## Braking from 60 km/h (front + rear)
 
-- Stops in **20.0 m** and **2.2 s**.
+- Stops in **19.7 m** and **2.2 s** (average **0.72 g**). Real MX bikes on a prepared dirt track: about 0.6–0.8 g.
 
 ## Hill climbing (long straight slope, full throttle for 6 s, rider leaning forward the whole time)
 
 | Slope | Start speed | Still climbing after 6 s? | Height gained | Speed after 6 s | Max steady speed if grip were unlimited (power limit) |
 |---|---|---|---|---|---|
-| 15° | standstill | yes | 19.3 m | 86 km/h | 145 km/h |
-| 15° | 50 km/h | yes | 37.0 m | 117 km/h | 145 km/h |
-| 20° | standstill | yes | 20.3 m | 69 km/h | 145 km/h |
-| 20° | 50 km/h | yes | 44.2 m | 101 km/h | 145 km/h |
-| 25° | standstill | yes | 18.2 m | 50 km/h | 145 km/h |
-| 25° | 50 km/h | yes | 48.2 m | 85 km/h | 145 km/h |
-| 30° | standstill | yes | 13.1 m | 30 km/h | 137 km/h |
-| 30° | 50 km/h | yes | 49.1 m | 67 km/h | 137 km/h |
-| 35° | standstill | yes | 3.7 m | 7 km/h | 130 km/h |
-| 35° | 50 km/h | yes | 46.7 m | 48 km/h | 130 km/h |
-| 40° | standstill | no — stops and slides back | 0.0 m | 0 km/h | 123 km/h |
-| 40° | 50 km/h | yes | 41.4 m | 28 km/h | 123 km/h |
-| 45° | standstill | no — stops and slides back | 0.0 m | 0 km/h | 116 km/h |
-| 45° | 50 km/h | yes | 33.2 m | 8 km/h | 116 km/h |
-| 50° | standstill | no — loops over / crashes | 0.0 m | — | 111 km/h |
-| 50° | 50 km/h | no — stops and slides back | 24.3 m | 0 km/h | 111 km/h |
+| 15° | standstill | yes | 18.3 m | 81 km/h | 145 km/h |
+| 15° | 50 km/h | yes | 35.5 m | 110 km/h | 145 km/h |
+| 20° | standstill | yes | 19.0 m | 64 km/h | 145 km/h |
+| 20° | 50 km/h | yes | 42.4 m | 95 km/h | 145 km/h |
+| 25° | standstill | yes | 16.7 m | 45 km/h | 140 km/h |
+| 25° | 50 km/h | yes | 46.0 m | 79 km/h | 140 km/h |
+| 30° | standstill | yes | 10.8 m | 25 km/h | 132 km/h |
+| 30° | 50 km/h | yes | 46.7 m | 62 km/h | 132 km/h |
+| 35° | standstill | yes | 1.5 m | 3 km/h | 125 km/h |
+| 35° | 50 km/h | yes | 44.2 m | 43 km/h | 125 km/h |
+| 40° | standstill | no — stops and slides back | 0.0 m | 0 km/h | 118 km/h |
+| 40° | 50 km/h | yes | 38.7 m | 24 km/h | 118 km/h |
+| 45° | standstill | no — stops and slides back | 0.0 m | 0 km/h | 113 km/h |
+| 45° | 50 km/h | yes | 30.6 m | 3 km/h | 113 km/h |
+| 50° | standstill | no — loops over / crashes | 0.0 m | — | 108 km/h |
+| 50° | 50 km/h | no — stops and slides back | 22.6 m | 0 km/h | 108 km/h |
 
 With 50 km/h of run-up the bike also carries momentum: speed alone is worth about 10 m of height.
 
@@ -74,8 +75,8 @@ With 50 km/h of run-up the bike also carries momentum: speed alone is worth abou
 
 | Slope | Height gained |
 |---|---|
-| 5° | 1.1 m |
-| 10° | 1.3 m |
+| 5° | 1.0 m |
+| 10° | 1.2 m |
 | 15° | 0.1 m |
 | 20° | -0.6 m |
 
@@ -83,10 +84,10 @@ Facing downhill most of the weight is on the front wheel, so the driven rear tyr
 
 ## How much leaning actually does (in the air, 1 second)
 
-- **Real life (flip assist 0):** leaning back for 1 s turns the bike **8° nose-up**; leaning forward **7° nose-down**.
+- **Real life (flip assist 0):** leaning back for 1 s turns the bike **7° nose-up**; leaning forward **7° nose-down**.
   The rider and bike turn against each other (angular momentum is conserved), so a weight shift alone
   can't flip the bike. Real backflips come from the take-off ramp and the throttle/brake.
-- **Game default (flip assist 250 N·m, in the air only):** leaning back for 1 s turns the bike **91°**.
+- **Game default (flip assist 250 N·m, in the air only):** leaning back for 1 s turns the bike **94°**.
 
 ## Throttle and brake in the air (0.5 s, leaving a jump at 40 km/h)
 

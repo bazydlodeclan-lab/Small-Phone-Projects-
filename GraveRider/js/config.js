@@ -23,19 +23,21 @@ var CONFIG = {
 
   // --- Electric motor (single speed, chain drive, no gearbox) ---
   motorPower: 60000,         // slider: peak power in watts — 80 hp [SPEC]
-  wheelTorque: 978,          // peak torque at the rear wheel, N·m [SPEC: MX 1.2 table; older pages say 938]
-  topSpeed: 40.3,            // m/s (145 km/h / 90 mph) with stock gearing [MEASURED: one hands-on test]
+  wheelTorque: 978,          // peak torque at the rear wheel, N·m [SPEC: MX 1.2, stock 14/47 gearing; the older VARG MX was 938]
+  topSpeed: 40.3,            // m/s (145 km/h / 90 mph) at the motor's limit, stock gearing [MEASURED: owner GPS and a magazine test;
+                             // no factory figure. "106 mph" needs taller sprockets, not stock]
   reverseSpeed: 4,           // m/s top speed backwards (hold brake once stopped) [GAME CHOICE]
   reverseTorque: 500,        // N·m at the rear wheel when reversing: enough to back up a steep hill [GAME CHOICE]
-  drivetrainInertia: 0.8,    // rear wheel + tyre + sprocket (+ a little motor) spinning inertia, kg·m² [ESTIMATE: wheel ≈ 0.7]
+  drivetrainInertia: 0.8,    // rear wheel + tyre + sprocket spinning inertia, kg·m² [ESTIMATE: wheel ≈ 0.8; the motor
+                             // adds ~0.5 when speeding up but only ~0.04 to how the bike twists in the air]
 
   // --- Brakes (rider uses front + rear together) ---
   frontBrakeTorque: 1000,    // 260 mm disc, 2-piston caliper, N·m [ESTIMATE from disc size]
   rearBrakeTorque: 450,      // 220 mm disc, 1-piston caliper, N·m [ESTIMATE from disc size]
 
   // --- Resistance ---
-  dragArea: 0.55,            // drag coefficient × frontal area, bike + standing rider, m² [ESTIMATE]
-  rollingResistance: 0.03,   // knobby tyres on dirt [ESTIMATE]
+  dragArea: 0.65,            // drag coefficient × frontal area, bike + standing rider, m² [ESTIMATE: 0.59 seated (magazine test) + standing]
+  rollingResistance: 0.04,   // knobby tyres on packed dirt [ESTIMATE: 0.03-0.05; loose dirt 0.06-0.10]
 
   // --- Throttle ---
   // Traction control (the real bike has it): cuts power when the rear tyre
@@ -58,34 +60,35 @@ var CONFIG = {
   flipAssist: 250,           // slider: extra turning force in the air (N·m); 0 = real life
   maxSpinSpeed: 4,           // assist stops adding spin above this (radians/sec; one backflip needs about 3)
   // A real rider can move their weight about 0.17 m forward (chest over the
-  // bars) and 0.20 m back (hanging off the back) [ESTIMATE: body-segment model]
+  // bars) and 0.17 m back (hanging off the back) [ESTIMATE: body-segment model]
   riderLeanForward: 0.20,    // radians at the pegs (0.20 × 0.84 m = 0.17 m)
-  riderLeanBack: 0.24,       // radians (0.24 × 0.84 m = 0.20 m)
+  riderLeanBack: 0.20,       // radians (0.20 × 0.84 m = 0.17 m)
   riderStrength: 4000,       // how firmly the rider holds their position (N·m) [ESTIMATE]
   riderLeanSpeed: 0.8,       // weight shift speed: neutral to full lean in about 0.35 s [ESTIMATE]
 
   // --- Suspension (KYB 48 mm fork + KYB shock) ---
   frontTravel: 0.310,        // fork travel, m [SPEC]
   rearTravel: 0.303,         // rear wheel travel, m [SPEC]
-  frontSpringRate: 9200,     // both fork springs together, N/m along the fork [ESTIMATE: typical 4.6 N/mm ×2]
-  rearSpringRate: 8800,      // at the wheel, N/m [ESTIMATE: gives about 100 mm sag with a 75 kg rider]
-  frontPreload: 0.016,       // spring pre-compression at full extension, m [ESTIMATE]
-  rearPreload: 0.044,        // m [ESTIMATE]
+  frontSpringRate: 10000,    // both fork springs, N/m along the fork [SPEC: 5.0 N/mm springs, the factory choice for a 198 lb rider in gear]
+  rearSpringRate: 8700,      // at the wheel, N/m [ESTIMATE: 58 N/mm shock (factory choice for 198 lb) through the linkage]
+  frontPreload: 0.008,       // spring pre-compression at full extension, m [ESTIMATE]
+  rearPreload: 0.0215,       // m [ESTIMATE: sets about 100 mm rider sag, 35 mm bike-only sag]
   frontDamping: 0.55,        // fraction of "no bounce" damping (1 = no bounce) [ESTIMATE]
   rearDamping: 0.6,          // [ESTIMATE]
   suspensionStiffness: 1.0,  // slider: multiplies both spring rates (1 = stock)
   bottomingStiffness: 8,     // last 15% of travel is this many times stiffer [ESTIMATE]
-  antiSquat: 1.0,            // share of the accelerating weight shift the chain + swingarm hold up (1 = 100%) [ESTIMATE: typical MX]
+  antiSquat: 0.85,           // share of the accelerating weight shift the chain + swingarm hold up [ESTIMATE: with the
+                             // ~18% the tilted rear slider already gives, ~100% total, the usual MX design target]
 
-  // --- Tyres (90/90-21 front, 140/80-18 rear) ---
+  // --- Tyres (80/100-21 front, 110/90-19 rear: the MX model's sizes) ---
   wheelGrip: 0.85,           // slider: friction coefficient, knobby tyre on packed dirt [ESTIMATE: 0.8-1.0]
-  frontWheelRadius: 0.348,   // from tyre size 90/90-21 [SPEC → calculated]
-  rearWheelRadius: 0.341,    // from tyre size 140/80-18 [SPEC → calculated]
+  frontWheelRadius: 0.347,   // from tyre size 80/100-21 [SPEC → calculated]
+  rearWheelRadius: 0.340,    // from tyre size 110/90-19 [SPEC → calculated]
 
   // --- Weights (kg) ---
   bikeMass: 118,             // whole bike including wheels [SPEC]
-  frontWheelMass: 9,         // wheel + tyre + disc [ESTIMATE]
-  rearWheelMass: 13,         // wheel + tyre + disc + sprocket [ESTIMATE]
+  frontWheelMass: 9,         // wheel + tyre + tube + disc [ESTIMATE: parts list ≈ 9.0]
+  rearWheelMass: 12,         // wheel + tyre + tube + disc + sprocket [ESTIMATE: parts list ≈ 11.9]
   riderMass: 90,             // 6 ft, 180 lb (81.6 kg) rider + about 8.5 kg of MX gear [ESTIMATE: gear listings]
 
   // --- Camera ---

@@ -45,6 +45,13 @@ const ROOT = path.join(__dirname, "..");
     // ---- 1. Suspension sag ----
     reset(); track([[-50, 0], [500, 0]], 0); settle(120);
     out.sag = { rear: Bike.compression(s.bike.rear), front: Bike.compression(s.bike.front) };
+    // bike alone (no rider)
+    G.loadLevel(9);
+    { const b = s.bike, m = CONFIG.riderMass;
+      b.world.destroyBody(b.rider); b.hips = null; CONFIG.riderMass = 0.001; // (damping uses riderMass)
+      for (let i = 0; i < 240; i++) { Bike.suspension(b); b.world.step(DT, 20, 10); Bike.updateContacts(b); }
+      CONFIG.riderMass = m;
+      out.sag.bikeRear = Bike.compression(b.rear); out.sag.bikeFront = Bike.compression(b.front); }
 
     // ---- 2. Acceleration on flat ground, holding full throttle ----
     function accel(throttleControl, leanFirst) {
@@ -212,7 +219,8 @@ const ROOT = path.join(__dirname, "..");
   L.push(`- Steepest hill the tyre could hold even at a crawl (if all weight were on the rear): atan(grip) = **${(Math.atan(C.wheelGrip) * 180 / Math.PI).toFixed(0)}°**. Real limit is lower because the front wheel lifts.`, "");
 
   L.push("## Suspension", "");
-  L.push(`- Sag with the rider standing still: rear **${(R.sag.rear * 1000).toFixed(0)} mm** (${(R.sag.rear / C.rearTravel * 100).toFixed(0)}% of travel), front **${(R.sag.front * 1000).toFixed(0)} mm** (${(R.sag.front / C.frontTravel * 100).toFixed(0)}%). Typical motocross race sag is ~100 mm rear.`, "");
+  L.push(`- Sag with the rider standing still: rear **${(R.sag.rear * 1000).toFixed(0)} mm** (${(R.sag.rear / C.rearTravel * 100).toFixed(0)}% of travel), front **${(R.sag.front * 1000).toFixed(0)} mm** (${(R.sag.front / C.frontTravel * 100).toFixed(0)}%). Motocross target: 100–105 mm rear with the rider seated (about 94 mm standing).`);
+  L.push(`- Sag of the bike alone: rear **${(R.sag.bikeRear * 1000).toFixed(0)} mm**, front **${(R.sag.bikeFront * 1000).toFixed(0)} mm**. Target: 30–40 mm rear.`, "");
   L.push("| Drop onto flat ground | Rear travel used | Front travel used | Rider crashes? |", "|---|---|---|---|");
   R.drops.forEach(d => L.push(`| ${d.h} m | ${(d.rear * 100).toFixed(0)}% | ${(d.front * 100).toFixed(0)}% | ${d.crashed ? "yes" : "no"} |`));
   L.push("", "Over 100% means it hit the bottoming stop (a real bike would bottom out too).");
@@ -231,7 +239,7 @@ const ROOT = path.join(__dirname, "..");
   L.push("Leaning has to come first: a real rider needs about 0.35 s to shift their weight.", "");
 
   L.push("## Braking from 60 km/h (front + rear)", "");
-  L.push(`- Stops in **${f1(R.brake.dist)} m** and **${f1(R.brake.time)} s**.`, "");
+  L.push(`- Stops in **${f1(R.brake.dist)} m** and **${f1(R.brake.time)} s** (average **${((60 / 3.6) ** 2 / (2 * R.brake.dist) / 9.81).toFixed(2)} g**). Real MX bikes on a prepared dirt track: about 0.6–0.8 g.`, "");
 
   L.push("## Hill climbing (long straight slope, full throttle for 6 s, rider leaning forward the whole time)", "");
   L.push("| Slope | Start speed | Still climbing after 6 s? | Height gained | Speed after 6 s | Max steady speed if grip were unlimited (power limit) |", "|---|---|---|---|---|---|");

@@ -66,7 +66,7 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 | `js/bike.js` | `Bike`: builds the bike (chassis, 2 wheels on wheel joints, rider body on a hip joint), controls (motor, traction control, throttle help, brakes, reverse, lean, flip assist), suspension (springs, bottoming cushion, anti-squat), crash let-go, ground contact + drive force, drawing from a "pose" (so the ghost uses the same drawing). |
 | `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain (Planck chain shapes), physics zones, race flow (ready → playing → crashed/finished), flips, ride stats, checkpoint splits, `Records` (best times in localStorage, wrapped in try/catch), ghost recording/playback, camera, input, drawing, HUD, finish screen. Also `Tuning` (the T panel: sliders, Copy settings, Reset, Clear best times). |
 | `art/` | `bike.svg`, `wheel.svg` (front), `rear-wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
-| `tests/run-tests.js` | Automated Playwright tests (43 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
+| `tests/run-tests.js` | Automated Playwright tests (48 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
 | `tests/physics-report.js` | Runs physics experiments (sag, drops, acceleration, braking, hill climbs, reversing, leaning, throttle/brake in the air) and writes `PHYSICS_REPORT.md`. Re-run after changing `config.js`. |
 
 ### Level data format (`js/levels.js`)
@@ -95,10 +95,10 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
   high and spins it. Gentle ramps and tabletops ride better; hills over ~40° are hard.
 
 ### Physics notes (important for future changes)
-- Real-world units and masses: 118 kg bike (96 kg chassis + 9 kg front / 13 kg rear
+- Real-world units and masses: 118 kg bike (97 kg chassis + 9 kg front / 12 kg rear
   wheel), 90 kg rider in gear (6 ft / 180 lb + ~8.5 kg gear), 9.81 m/s². Real
-  geometry: 1.487 m wheelbase, 27.3° rake, 310/303 mm travel, wheel radii
-  0.348/0.341 m. See `GEO` in bike.js.
+  geometry: 1.487 m wheelbase, 27.3° rake, 310/303 mm travel, MX tyres 80/100-21 and
+  110/90-19 (radii 0.347/0.340 m). See `GEO` in bike.js.
 - `planck.Settings.maxRotation` is raised to π per step (game.js). Planck's default
   caps any body at 94 rad/s, below the rear wheel's 118 rad/s at top speed; the
   capped wheel leaked the motor's push into the frame (fake flips, 116 km/h cap).
@@ -110,12 +110,17 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 - Air drag (½ρ·CdA·v²) on the chassis and rolling resistance on wheels in contact:
   `Bike.resistance()`.
 - Suspension: Planck `WheelJoint` springs (implicit = stable). `Bike.suspension()`
-  converts real spring rates (N/m) and damping ratios into Planck's terms (Planck
-  rates springs against the wheel's mass). Preload = the spring's rest point is set
-  beyond full extension. Two `RopeJoint`s per wheel are the hard stops, plus a
+  converts real spring rates (N/m) and damping ratios into Planck's terms: Planck
+  rates a spring against the mass it sees along the suspension line — chassis +
+  wheel + the chassis turning (lever² ÷ inertia). Leaving the turning part out made
+  the springs only 74% (rear) / 88% (front) as stiff as set. Factory springs for a
+  198 lb rider in gear (fork 2 × 5.0 N/mm, shock 58 N/mm ≈ 8.7 N/mm at the wheel)
+  give ~96 mm rear sag standing and ~33 mm bike-only. Preload = the spring's rest
+  point is set beyond full extension. Two `RopeJoint`s per wheel are the hard stops, plus a
   bottoming cushion (last 15% of travel, 8× stiffer). The rear wheel slides on a
-  straight line (no swingarm/chain), so `antiSquat` adds the chain + swingarm force
-  that stops the rear squatting under acceleration (from the measured drive force).
+  straight line (no swingarm/chain), so `antiSquat` (0.85; the slider's tilt adds
+  ~18%, so ~100% total) adds the chain + swingarm force that stops the rear squatting
+  under acceleration (from the measured drive force).
 - Wheelies (real physics): the front starts to lift when grip nears (rear tyre →
   centre of mass distance ÷ its height): ≈0.87 neutral, ≈1.0 leaning forward. As the
   front unloads the fork extends and tips the nose up further, so with grip 0.85
@@ -123,15 +128,16 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
   front down (pressing gas and lean together still lifts it: the shift takes ~0.35 s).
 - Throttle: traction control (the real bike has it) keeps rear wheelspin ≤ 3 m/s.
   `throttleControl` = rider throttle help, 0..1, default 0 (real life); it eases the
-  throttle in steep wheelies and holds it steady in the air. Front brake is always
-  eased when the rear wheel lifts (stops endos). Down: brakes, then reverse once
+  throttle in steep wheelies and holds it steady in the air. When the rear wheel
+  lifts under braking the front brake is eased and the rear brake let go (locking
+  the lifted, spinning rear wheel throws its spin into the frame: endo). Down: brakes, then reverse once
   stopped (4 m/s, 500 N·m — a game choice; facing downhill it can back up ~15°).
 - The rider is one body (whole-body mass and inertia set with `setMassData`: centre
   0.84 m above the pegs, I 12.5 kg·m²) on a hip joint at the footpegs. Lean = real
-  weight shift: forward 0.20 rad (0.17 m), back 0.24 rad (0.20 m), ~0.35 s to shift.
+  weight shift: forward and back 0.20 rad (0.17 m), ~0.35 s to shift.
   In the air that alone turns the bike only ~8°/s. `flipAssist` (250 N·m, air only,
   capped at `maxSpinSpeed` 4 rad/s) adds a little turning; 0 = real life. A backflip
-  off the test track's double needs ~35 mph at take-off. The rider leans back
+  off the test track's double needs ~38 mph at take-off. The rider leans back
   automatically when braking hard.
 - Crash = rider's head or torso touching the ground (or falling below the level).
   On a crash the hip joint is destroyed so the rider falls off, and 1 s later the
@@ -140,15 +146,19 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
   the first control press → crashed / finished. Crash is checked before the finish
   each step: crash before or on the same step as the finish = crash; after the finish
   crashes are ignored and the rider brakes to a stop (no reverse).
-- A wheel counts as "on the ground" if it touched in the last 3 steps.
+- A wheel counts as "on the ground" if it touched in the last 3 steps. For jumps,
+  flips, air time and flip assist the bike is "in the air" only when neither wheel
+  nor the frame touches the ground (`Bike.touching`).
 - Flips: while in the air, the lowest and highest angle are tracked relative to the
   nearest "upright". The moment the bike has turned a full turn (within `flipSlack`)
   that flip counts and takes `flipTimeBonus` off the time; each further full turn
   counts again. A flip you are still in when you crash gives nothing. Negative angle
-  = backflip.
+  = backflip. If a wheel brushes something while the bike is more than 90° from
+  upright, the flip in progress keeps counting.
 - Your time = clock − flip bonus. Best runs are saved per level name under
-  `graveRider.best.v1.<name>` (time, checkpoint splits, ghost frames). Runs with
-  tuning-panel sliders off their defaults are not saved. Ghost: every 2nd step the
+  `graveRider.best.v1.<name>` (time, checkpoint splits, ghost frames; damaged
+  records are ignored). Runs where any tuning slider was off its default at any
+  point (`state.tunedRun`) are not saved. The clock counts whole physics steps. Ghost: every 2nd step the
   pose of chassis, wheels and rider is recorded; playback blends between frames
   (not across a crash respawn).
 - Camera moves once per physics step (same feel at 60 and 144 Hz).
@@ -162,12 +172,12 @@ control) with a researched 6 ft / 180 lb rider; real-life wheelie behaviour; rev
 level system with zones; test level ("Test Track"); time-trial flow (clock starts on
 first input, crash/finish rules, live flip counting with time bonus); HUD with speed,
 best time and checkpoint splits; ghost of your best run; finish screen with ride
-stats; camera; tuning panel; swappable art; physics report; 43/43 automated tests.
+stats; camera; tuning panel; swappable art; physics report; 48/48 automated tests.
 
 Known things to handle in Week 2:
 - Build the 4 levels with the "normal theme for now" look (ask before adding themes).
 - Levels for real riding: give the rider room to lean forward before throttling,
-  keep jumps big and fast enough for flips (~35 mph take-off on a 2 m double), and
+  keep jumps big and fast enough for flips (~38 mph take-off on a 2 m double), and
   watch hill faces over ~35° (a standstill climb fails at 40° on 0.85 grip).
 - Bat level (if it stays): gravity pointing up — check crash detection, throttle
   help (uses the slope under the rear tyre), flip counting and camera framing.

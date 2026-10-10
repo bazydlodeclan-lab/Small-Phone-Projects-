@@ -39,7 +39,9 @@ var Game = (function () {
     airBack: 0,           // flips already counted on this jump
     airFront: 0,
     airStartX: 0,
-    best: null,           // your best run on this level: { timeMs, splits, ghost }
+    best: null,           // your best run on this level: { timeMs, splits, ghost } (the ghost)
+    bestMs: null,         // best time shown on screen (updates at the finish line)
+    tunedRun: false,      // tuning-panel sliders were changed at some point during this run
     recording: [],        // this run, recorded for the ghost
     result: null,         // filled in at the finish line
     split: null,          // last checkpoint/finish comparison with your best
@@ -66,7 +68,13 @@ var Game = (function () {
   // ---------------------------------------------------
   var Records = (function () {
     var PREFIX = "graveRider.best.v1.", memory = {};
-    function valid(run) { return run && typeof run.timeMs === "number" && run.ghost && run.ghost.frames; }
+    function validFrame(f) { return Array.isArray(f) && f.length === 13; }
+    function valid(run) {
+      var g = run && run.ghost;
+      return !!(run && typeof run.timeMs === "number" && Array.isArray(run.splits) && g &&
+        typeof g.every === "number" && g.every > 0 && Array.isArray(g.frames) && g.frames.length > 0 &&
+        validFrame(g.frames[0]) && validFrame(g.frames[g.frames.length - 1]));
+    }
     function load(level) {
       if (memory[level.name]) return memory[level.name];
       try {
@@ -157,8 +165,10 @@ var Game = (function () {
     state.checkpoint = level.start;
     state.checkpointIndex = -1;
     state.splits = [];
-    state.stats = { topSpeed: 0, distance: 0, airMs: 0, longestAirMs: 0, longestJump: 0 };
+    state.stats = { topSpeed: 0, distance: 0, airMs: 0, longestJump: 0, longestJumpAirMs: 0 };
     state.best = Records.load(level);
+    state.bestMs = state.best ? state.best.timeMs : null;
+    state.tunedRun = false;
     state.recording = [];
     state.result = null;
     state.split = null;
@@ -171,6 +181,11 @@ var Game = (function () {
     if (state.bike) Bike.remove(world, state.bike);
     state.bike = Bike.create(world, at.x / PPM, at.y / PPM);
     state.airSteps = 0;
+    state.airUpright = 0; // a new bike starts upright
+    state.airMin = 0;
+    state.airMax = 0;
+    state.airBack = 0;
+    state.airFront = 0;
     state.crashTimerMs = 0;
     updatePhysics();
     camera.x = at.x;
@@ -239,8 +254,9 @@ var Game = (function () {
 
     // The clock runs while playing and while waiting to respawn after a crash
     if (state.mode === "playing" || state.mode === "crashed") {
-      state.timeMs += dt;
       state.runSteps++;
+      state.timeMs = state.runSteps * STEP_MS; // counted in whole steps (no rounding drift)
+      if (!state.tunedRun && Tuning.isTuned()) state.tunedRun = true;
       if (state.runSteps % GHOST_EVERY === 0) state.recording.push(ghostFrame(bike));
     }
 
@@ -295,19 +311,24 @@ var Game = (function () {
     var bike = state.bike;
     var angle = bike.chassis.getAngle();
 
-    if (Bike.onGround(bike)) {
+    if (Bike.touching(bike)) {
       if (state.airSteps > 8) landed(); // a real jump, not a bump
       state.airSteps = 0;
       return;
     }
     if (state.airSteps === 0) {
-      // Just took off: "upright" is the nearest whole turn to the current angle
-      state.airUpright = Math.round(angle / TURN) * TURN;
-      state.airMin = angle;
-      state.airMax = angle;
-      state.airBack = 0;
-      state.airFront = 0;
       state.airStartX = bike.chassis.getPosition().x;
+      // Just took off: "upright" is the nearest whole turn to the current angle.
+      // If the bike is far from upright (a wheel brushed something mid-flip),
+      // keep counting the flip that was already going.
+      var near = Math.round(angle / TURN) * TURN;
+      if (Math.abs(angle - near) < Math.PI / 2) {
+        state.airUpright = near;
+        state.airMin = angle;
+        state.airMax = angle;
+        state.airBack = 0;
+        state.airFront = 0;
+      }
     }
     state.airSteps++;
     state.airMin = Math.min(state.airMin, angle);
@@ -326,11 +347,10 @@ var Game = (function () {
     popup(name + kind + "!  -" + CONFIG.flipTimeBonus + " s", "#ffd23f");
   }
 
-  // Landed a jump: remember the longest one
+  // Landed a jump: remember the longest one (its distance and its air time)
   function landed() {
-    var s = state.stats;
-    s.longestAirMs = Math.max(s.longestAirMs, state.airSteps * STEP_MS);
-    s.longestJump = Math.max(s.longestJump, Math.abs(state.bike.chassis.getPosition().x - state.airStartX));
+    var s = state.stats, dist = Math.abs(state.bike.chassis.getPosition().x - state.airStartX);
+    if (dist > s.longestJump) { s.longestJump = dist; s.longestJumpAirMs = state.airSteps * STEP_MS; }
   }
 
   // Ride stats for the finish screen
@@ -338,7 +358,7 @@ var Game = (function () {
     var v = state.bike.chassis.getLinearVelocity(), speed = Math.hypot(v.x, v.y), s = state.stats;
     s.topSpeed = Math.max(s.topSpeed, speed);
     s.distance += speed * CONFIG.physicsStepSec;
-    if (!Bike.onGround(state.bike)) s.airMs += STEP_MS;
+    if (!Bike.touching(state.bike)) s.airMs += STEP_MS;
   }
 
   function popup(text, color) {
@@ -368,12 +388,13 @@ var Game = (function () {
     state.mode = "finished";
     var time = raceTimeMs(), best = state.best;
     var newBest = !best || time < best.timeMs;
-    // Runs with changed tuning-panel settings don't replace your best time
-    var tuned = Tuning.isTuned();
+    // Runs where tuning-panel settings were changed don't replace your best time
+    var tuned = state.tunedRun || Tuning.isTuned();
     var saved = false;
     if (newBest && !tuned) {
       saved = Records.save(state.level, { timeMs: time, splits: state.splits.slice(),
         ghost: { every: GHOST_EVERY, frames: state.recording } });
+      state.bestMs = time; // kept for this visit even if the browser blocks saving
     }
     state.result = { timeMs: time, clockMs: state.timeMs, previousBestMs: best ? best.timeMs : null,
       deltaMs: best ? time - best.timeMs : null, newBest: newBest, tuned: tuned, saved: saved };
@@ -571,6 +592,7 @@ var Game = (function () {
   }
 
   function formatTime(ms) {
+    ms = Math.round(ms * 1000) / 1000; // 13749.9999999 ms is 13.75 s, not 13.74
     var m = Math.floor(ms / 60000), s = Math.floor(ms / 1000) % 60, cs = Math.floor(ms / 10) % 100;
     return m + ":" + (s < 10 ? "0" : "") + s + "." + (cs < 10 ? "0" : "") + cs;
   }
@@ -598,8 +620,7 @@ var Game = (function () {
     ctx.fillText(formatTime(raceTimeMs()), 24, 48);
     ctx.font = "16px monospace";
     ctx.fillStyle = "#d8deea";
-    var bestMs = state.result && state.result.saved ? state.result.timeMs : state.best ? state.best.timeMs : null;
-    ctx.fillText("BEST   " + (bestMs === null ? "-:--.--" : formatTime(bestMs)), 24, 74);
+    ctx.fillText("BEST   " + (state.bestMs === null ? "-:--.--" : formatTime(state.bestMs)), 24, 74);
     var flips = state.backflips + state.frontflips;
     ctx.fillText("FLIPS  " + flips + (flips ? "  (-" + (state.flipBonusMs / 1000).toFixed(1) + " s)" : ""), 24, 98);
 
@@ -691,7 +712,7 @@ var Game = (function () {
       ["Top speed", speedText(s.topSpeed)],
       ["Average speed", speedText(clockS > 0 ? s.distance / clockS : 0)],
       ["Air time", (s.airMs / 1000).toFixed(1) + " s"],
-      ["Longest jump", distanceText(s.longestJump) + "  (" + (s.longestAirMs / 1000).toFixed(1) + " s)"],
+      ["Longest jump", distanceText(s.longestJump) + "  (" + (s.longestJumpAirMs / 1000).toFixed(1) + " s)"],
       ["Crashes", String(state.crashes)]
     ];
     ctx.font = "18px monospace";
@@ -704,10 +725,12 @@ var Game = (function () {
     });
 
     ctx.textAlign = "center";
-    if (r.newBest && r.tuned) {
+    var note = r.newBest && r.tuned ? "Tuning panel settings were changed, so this time was not saved as your best"
+      : r.newBest && !r.saved ? "Your browser blocked saving: this best time lasts until you close the page" : "";
+    if (note) {
       ctx.fillStyle = "#ffd23f";
       ctx.font = "14px sans-serif";
-      ctx.fillText("Tuning panel settings are changed, so this time was not saved as your best", viewW / 2, y + h - 52);
+      ctx.fillText(note, viewW / 2, y + h - 52);
     }
     ctx.fillStyle = "#ffd23f";
     ctx.font = "bold 22px sans-serif";
@@ -744,7 +767,7 @@ var Game = (function () {
   // Exposed so the tuning panel and automated tests can read the game
   return { state: state, input: input, world: world, step: step, bikePos: bikePos, bikeVel: bikeVel,
     loadLevel: loadLevel, spawnBike: spawnBike, camera: camera, raceTimeMs: raceTimeMs, ghostPose: ghostPose,
-    clearBest: function () { Records.clear(); state.best = null; } };
+    clearBest: function () { Records.clear(); state.best = null; state.bestMs = null; } };
 })();
 
 // =====================================================
