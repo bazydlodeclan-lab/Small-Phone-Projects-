@@ -255,8 +255,21 @@ var Bike = (function () {
       // Bottoming cushion: real forks (hydraulic cones) and shocks (bump
       // stops) get much stiffer in the last 15% of travel
       var deep = compression(s) - 0.85 * s.travel;
-      if (deep > 0) pushApart(bike, s, CONFIG.bottomingStiffness * k * deep);
+      var cushion = s === bike.rear ? CONFIG.rearBottoming : CONFIG.bottomingStiffness;
+      if (deep > 0) pushApart(bike, s, cushion * k * deep);
     });
+
+    // Rear linkage: stiffer deeper in the stroke. Adds what the wheel-force
+    // table has beyond the straight spring, but only past the sag point so
+    // the ride height stays as set.
+    var rc = compression(bike.rear);
+    if (rc > 0.105 && CONFIG.rearForceTable.length) {
+      var want = tableAt(CONFIG.rearForceTable, rc) * CONFIG.suspensionStiffness;
+      var have = CONFIG.rearSpringRate * CONFIG.suspensionStiffness * (rc + CONFIG.rearPreload);
+      var extra = want - have;
+      var atSag = tableAt(CONFIG.rearForceTable, 0.105) * CONFIG.suspensionStiffness - CONFIG.rearSpringRate * CONFIG.suspensionStiffness * (0.105 + CONFIG.rearPreload);
+      if (extra - atSag > 0) pushApart(bike, bike.rear, extra - atSag);
+    }
 
     // The rider's legs
     if (bike.hips) {
@@ -277,6 +290,36 @@ var Bike = (function () {
       var transfer = bike.rearDrive * comHeight(bike) / wheelbase(bike); // N moved onto the rear
       pushApart(bike, bike.rear, CONFIG.antiSquat * transfer);
     }
+  }
+
+  // Linear lookup in a [[x, y], ...] table
+  function tableAt(t, x) {
+    if (x <= t[0][0]) return t[0][1];
+    for (var i = 1; i < t.length; i++) {
+      if (x <= t[i][0]) return t[i - 1][1] + (t[i][1] - t[i - 1][1]) * (x - t[i - 1][0]) / (t[i][0] - t[i - 1][0]);
+    }
+    return t[t.length - 1][1];
+  }
+
+  // Tyre grip depends on slip: set each wheel contact's friction from how
+  // fast the tyre surface moves compared with the ground (spin or skid).
+  function tyreGrip(bike) {
+    [bike.rear, bike.front].forEach(function (s) {
+      var w = s.wheel;
+      for (var ce = w.getContactList(); ce; ce = ce.next) {
+        var ct = ce.contact;
+        if (!ct.isTouching() || ce.other.getUserData() !== "ground") continue;
+        var n = ct.getWorldManifold(null).normal, sign = ct.getFixtureB().getBody() === w ? 1 : -1;
+        // rolling direction along the ground (to the right of the bike)
+        var tx = -sign * n.y, ty = sign * n.x;
+        if (tx < 0) { tx = -tx; ty = -ty; }
+        var v = w.getLinearVelocity();
+        var slip = Math.abs(w.getAngularVelocity() * s.radius - (v.x * tx + v.y * ty));
+        var share = slip <= CONFIG.slipFull ? 1 :
+          1 - (1 - CONFIG.slidingGrip) * Math.min(1, (slip - CONFIG.slipFull) / Math.max(0.1, CONFIG.slipSliding - CONFIG.slipFull));
+        ct.setFriction((bike.mu || 0) * share);
+      }
+    });
   }
 
   // Push a wheel out along its suspension line (and the frame the other way)
@@ -378,7 +421,10 @@ var Bike = (function () {
       // Electric motor: full torque up to the speed where it reaches full
       // power, then constant power (torque falls as the wheel spins faster)
       var wheelSpin = Math.abs(bike.rear.wheel.getAngularVelocity() - c.getAngularVelocity());
-      var torque = Math.min(CONFIG.wheelTorque, CONFIG.motorPower / Math.max(wheelSpin, 1));
+      var roadSpeed = wheelSpin * Rr;
+      var fade = roadSpeed <= CONFIG.powerFadeStart ? 1 :
+        1 - (1 - CONFIG.powerFadeEnd) * Math.min(1, (roadSpeed - CONFIG.powerFadeStart) / Math.max(1, CONFIG.topSpeed - CONFIG.powerFadeStart));
+      var torque = Math.min(CONFIG.wheelTorque, CONFIG.motorPower * fade / Math.max(wheelSpin, 1));
       var targetSpin = CONFIG.topSpeed / Rr;
       // Throttle help in the air: the rider holds the throttle steady instead
       // of pinning it, so the wheel keeps pace with the bike (a racing wheel
@@ -423,8 +469,13 @@ var Bike = (function () {
         }
       }
     } else {
-      // Off the throttle: a little motor drag on the rear wheel [ESTIMATE]
-      rearJ.enableMotor(true); rearJ.setMotorSpeed(0); rearJ.setMaxMotorTorque(20);
+      // Off the throttle: engine braking (regen) on the rear wheel, fading to
+      // nothing at a standstill so the bike doesn't hold itself on a slope.
+      // Only while the tyre is on the ground (it would otherwise tip the nose
+      // down in the air).
+      var surfaceSpeed = Math.abs(bike.rear.wheel.getAngularVelocity() - c.getAngularVelocity()) * Rr;
+      var regen = bike.rearOnGround ? CONFIG.regenTorque * Math.min(1, surfaceSpeed / 3) : 0;
+      rearJ.enableMotor(true); rearJ.setMotorSpeed(0); rearJ.setMaxMotorTorque(Math.max(20, regen));
       frontJ.enableMotor(false);
     }
 
@@ -663,6 +714,7 @@ var Bike = (function () {
     applyTuning: applyTuning,
     onGround: onGround,
     touching: touching,
+    tyreGrip: tyreGrip,
     loadArt: loadArt,
     poseOf: poseOf,
     draw: draw,

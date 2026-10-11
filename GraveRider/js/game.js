@@ -247,6 +247,7 @@ var Game = (function () {
     updatePhysics();
     Bike.suspension(bike);
     Bike.resistance(bike, state.gravity);
+    if (state.mode === "playing" || state.mode === "ready" || state.mode === "finished") Bike.tyreGrip(bike);
     if (state.mode === "playing") Bike.control(bike, input);
     else if (state.mode !== "crashed") Bike.control(bike, HOLD);
     world.step(CONFIG.physicsStepSec, 20, 10);

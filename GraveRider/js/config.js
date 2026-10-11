@@ -26,6 +26,12 @@ var CONFIG = {
   wheelTorque: 978,          // peak torque at the rear wheel, N·m [SPEC: MX 1.2, stock 14/47 gearing; the older VARG MX was 938]
   topSpeed: 40.3,            // m/s (145 km/h / 90 mph) at the motor's limit, stock gearing [MEASURED: owner GPS and a magazine test;
                              // no factory figure. "106 mph" needs taller sprockets, not stock]
+  // Power fades near top speed: full power up to fadeStart, then tapers to
+  // fadeEnd × power at top speed (owners report torque about halved by ~127 km/h)
+  powerFadeStart: 33.3,      // m/s (120 km/h) [ESTIMATE: owner reports]
+  powerFadeEnd: 0.7,         // share of full power left at top speed [ESTIMATE]
+  regenTorque: 100,          // engine braking when you let go of the throttle, N·m at the wheel (the real bike's regen
+                             // is adjustable 0-100%; this is a middle setting) [ESTIMATE: max ~250-300]
   reverseSpeed: 4,           // m/s top speed backwards (hold brake once stopped) [GAME CHOICE]
   reverseTorque: 500,        // N·m at the rear wheel when reversing: enough to back up a steep hill [GAME CHOICE]
   drivetrainInertia: 0.8,    // rear wheel + tyre + sprocket spinning inertia, kg·m² [ESTIMATE: wheel ≈ 0.8; the motor
@@ -90,11 +96,24 @@ var CONFIG = {
   frontDamping: 0.55,        // fraction of "no bounce" damping (1 = no bounce) [ESTIMATE]
   rearDamping: 0.6,          // [ESTIMATE]
   suspensionStiffness: 1.0,  // slider: multiplies both spring rates (1 = stock)
-  bottomingStiffness: 8,     // last 15% of travel is this many times stiffer [ESTIMATE]
+  bottomingStiffness: 8,     // fork: last 15% of travel is this many times stiffer [ESTIMATE]
+  rearBottoming: 2,          // rear: softer cushion, because the linkage already stiffens it [ESTIMATE]
+  // Rear linkage: the shock gets stiffer deeper in the stroke (leverage falls
+  // from ~2.85 to ~1.75). Wheel force vs compression for the 58 N/mm factory
+  // shock, N at [0, 50, 105, 150, 200, 250, 303] mm [ESTIMATE: from a modelled
+  // leverage curve; real curves are progressive by about 30-45%]
+  rearForceTable: [[0, 145], [0.05, 549], [0.105, 1097], [0.15, 1649], [0.2, 2408], [0.25, 3368], [0.303, 4690]],
   antiSquat: 0.85,           // share of the accelerating weight shift the chain + swingarm hold up [ESTIMATE: with the
                              // ~18% the tilted rear slider already gives, ~100% total, the usual MX design target]
 
   // --- Tyres (80/100-21 front, 110/90-19 rear: the MX model's sizes) ---
+  // Real tyres grip best when the wheel turns about as fast as the ground
+  // moves under it. Spinning or skidding hard loses grip (sliding friction is
+  // below peak). Slip = how much faster/slower the tyre surface moves than the
+  // bike, m/s. [ESTIMATE: sliding ≈ 75% of peak on dirt; peak range 0.8-1.0]
+  slipFull: 4,               // m/s of slip with full grip (traction control works around 3.5)
+  slipSliding: 12,           // m/s of slip where grip has dropped to the sliding value
+  slidingGrip: 0.75,         // share of peak grip when spinning / skidding
   wheelGrip: 0.85,           // slider: friction coefficient, knobby tyre on packed dirt [ESTIMATE: 0.8-1.0]
   frontWheelRadius: 0.347,   // from tyre size 80/100-21 [SPEC → calculated]
   rearWheelRadius: 0.340,    // from tyre size 110/90-19 [SPEC → calculated]

@@ -11,6 +11,7 @@ const ROOT = path.join(__dirname, "..");
 const SHOTS = path.join(__dirname, "screenshots");
 fs.mkdirSync(SHOTS, { recursive: true });
 
+const CONFIG_DEFAULTS_GRIP = 0.85, CONFIG_DEFAULTS_POWER = 60000;
 const results = [];
 function check(name, ok, detail) {
   results.push({ name, ok, detail });
@@ -714,7 +715,7 @@ function installHelpers() {
     "moved " + more.downhillMoved.toFixed(2) + " m in 4 s");
   check("Traction control holds the wheelspin steady (about 3 m/s)", more.slipMin > 2 && more.slipMax < 4.5 && more.slipMax - more.slipMin < 1,
     "slip " + more.slipMin.toFixed(2) + "-" + more.slipMax.toFixed(2) + " m/s");
-  check("Moving the grip slider while riding changes the tyre's grip at once", more.gripOnTyre !== null && Math.abs(more.gripOnTyre - 0.3) < 0.01,
+  check("Moving the grip slider while riding changes the tyre's grip at once", more.gripOnTyre !== null && more.gripOnTyre > 0.2 && more.gripOnTyre < 0.31, // (a spinning tyre loses a little more)
     "tyre grip " + (more.gripOnTyre === null ? "?" : more.gripOnTyre.toFixed(3)));
   check("Shown times and differences add up", more.timeShown === "0:13.75" && more.deltaShown === "-0.01",
     more.timeShown + ", " + more.deltaShown);
@@ -772,6 +773,53 @@ function installHelpers() {
     "crouch " + (r3.crouchAtHighGravity * 1000).toFixed(0) + " mm");
   check("A hard landing on a ceiling (gravity up) throws the rider off too", r3.ceilingMode === "crashed" && r3.ceilingPeak > 10,
     r3.ceilingMode + ", peak " + r3.ceilingPeak.toFixed(1) + " g");
+
+  // 18. Realism upgrades: grip falls when spinning, power fades near top speed, engine braking, progressive rear linkage
+  const real = await page.evaluate(() => {
+    const G = Game, s = G.state; s.paused = true; const out = {};
+    G.loadLevel(T.flatLevel());
+    Object.assign(G.input, T.none, { leanForward: true }); for (let i = 0; i < 36; i++) G.step();
+    const fr = []; let top = 0;
+    CONFIG.tractionControl = false; // let it spin
+    for (let i = 0; i < 90; i++) {
+      Object.assign(G.input, T.none, { leanForward: true, gas: true }); G.step();
+      const ce = s.bike.rear.wheel.getContactList(); if (ce) fr.push(ce.contact.getFriction());
+    }
+    CONFIG.tractionControl = true;
+    out.spinFriction = Math.min.apply(null, fr);
+    // power fade: torque available at 140 km/h is less than the constant-power value
+    out.fade = [30, 40].map(v => { const ws = v / CONFIG.rearWheelRadius; return CONFIG.motorPower / ws; });
+    G.loadLevel(T.flatLevel());
+    Object.assign(G.input, T.none, { leanForward: true }); for (let i = 0; i < 36; i++) G.step();
+    for (let i = 0; i < 60 * 40; i++) { const a = s.bike.chassis.getAngle(), w = s.bike.chassis.getAngularVelocity(); Object.assign(G.input, T.none, { leanForward: true, gas: a + 0.25 * w > -0.3 }); G.step(); }
+    Object.assign(G.input, T.none, { gas: true, leanForward: true }); G.step();
+    out.motorTorqueTop = s.bike.rear.joint.getMaxMotorTorque(); out.topKmh = Math.hypot(G.bikeVel().x, G.bikeVel().y) / CONFIG.pixelsPerMetre * 3.6;
+    // engine braking: coast from speed; with regen it slows more than with only the old 20 N·m drag
+    function coast(regen) {
+      CONFIG.regenTorque = regen;
+      G.loadLevel(T.flatLevel()); Object.assign(G.input, T.none, { leanForward: true }); for (let i = 0; i < 36; i++) G.step();
+      for (let i = 0; i < 60 * 8; i++) { const a = s.bike.chassis.getAngle(), w = s.bike.chassis.getAngularVelocity(); Object.assign(G.input, T.none, { leanForward: true, gas: a + 0.25 * w > -0.3 && Math.hypot(G.bikeVel().x, G.bikeVel().y) / 64 < 15 }); G.step(); }
+      Object.assign(G.input, T.none); const v0 = Math.hypot(G.bikeVel().x, G.bikeVel().y);
+      for (let i = 0; i < 120; i++) G.step();
+      const slow = G.bikeVel().x / CONFIG.pixelsPerMetre;
+      // standing still on flat ground: regen must not move it
+      return { drop: v0 / CONFIG.pixelsPerMetre - slow, v0: v0 / CONFIG.pixelsPerMetre };
+    }
+    out.coastRegen = coast(CONFIG_DEFAULTS.regenTorque); out.coastNoRegen = coast(0);
+    CONFIG.regenTorque = CONFIG_DEFAULTS.regenTorque;
+    // progressive rear linkage: stiffer deeper in the stroke
+    out.rearForceAt = [0.105, 0.2, 0.3].map(x => { const t = CONFIG.rearForceTable; let y = t[t.length - 1][1]; for (let i = 1; i < t.length; i++) if (x <= t[i][0]) { y = t[i - 1][1] + (t[i][1] - t[i - 1][1]) * (x - t[i - 1][0]) / (t[i][0] - t[i - 1][0]); break; } return y; });
+    LEVELS.pop(); G.loadLevel(0); s.paused = false;
+    return out;
+  });
+  check("A spinning tyre loses grip (sliding friction below peak)", real.spinFriction < CONFIG_DEFAULTS_GRIP * 0.9,
+    "lowest tyre friction while spinning " + real.spinFriction.toFixed(2) + " (peak " + CONFIG_DEFAULTS_GRIP + ")");
+  check("Motor power fades near top speed (less torque than constant power)", real.topKmh > 135 && real.motorTorqueTop < 0.85 * CONFIG_DEFAULTS_POWER / (40.3 / 0.34),
+    "torque at " + Math.round(real.topKmh) + " km/h " + Math.round(real.motorTorqueTop) + " N·m vs " + Math.round(CONFIG_DEFAULTS_POWER / (40.3 / 0.34)) + " at constant power");
+  check("Engine braking: letting go of the throttle slows the bike more than coasting without regen", real.coastRegen.drop > real.coastNoRegen.drop + 0.5,
+    "slows " + real.coastRegen.drop.toFixed(1) + " m/s in 2 s vs " + real.coastNoRegen.drop.toFixed(1) + " without");
+  check("Rear suspension gets stiffer deeper in the stroke", real.rearForceAt[2] / real.rearForceAt[0] > 3.5 && real.rearForceAt[1] / real.rearForceAt[0] > 2,
+    "wheel force " + real.rearForceAt.map(f => Math.round(f) + " N").join(" → ") + " at 105/200/300 mm");
 
   check("No console errors during all tests", errors.length === 0, errors.join(" | "));
   await browser.close();

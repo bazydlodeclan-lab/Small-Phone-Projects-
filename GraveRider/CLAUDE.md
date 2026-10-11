@@ -66,7 +66,7 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 | `js/bike.js` | `Bike`: builds the bike (chassis, 2 wheels on wheel joints, rider body on a hip joint), controls (motor, traction control, throttle help, brakes, reverse, lean, flip assist), suspension (springs, bottoming cushion, anti-squat), crash let-go, ground contact + drive force, drawing from a "pose" (so the ghost uses the same drawing). |
 | `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain (Planck chain shapes), physics zones, race flow (ready → playing → crashed/finished), flips, ride stats, checkpoint splits, `Records` (best times in localStorage, wrapped in try/catch), ghost recording/playback, camera, input, drawing, HUD, finish screen. Also `Tuning` (the T panel: sliders, Copy settings, Reset, Clear best times). |
 | `art/` | `bike.svg`, `wheel.svg` (front), `rear-wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
-| `tests/run-tests.js` | Automated Playwright tests (55 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
+| `tests/run-tests.js` | Automated Playwright tests (62 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
 | `tests/physics-report.js` | Runs physics experiments (sag, drops, acceleration, braking, hill climbs, reversing, leaning, throttle/brake in the air) and writes `PHYSICS_REPORT.md`. Re-run after changing `config.js`. |
 
 ### Level data format (`js/levels.js`)
@@ -104,6 +104,12 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 - Motor: rear WheelJoint motor. Torque = min(978 N·m, 60 kW ÷ wheel speed), single
   speed, max wheel speed = 145 km/h. `drivetrainInertia` 0.8 kg·m² (wheel + a little
   motor) gives realistic in-air throttle/brake pitch (~1 rad/s).
+- Realism upgrades (all [ESTIMATE]s, tagged in config.js; the research job for them was
+  cut off by the usage limit, so re-check them against sources when possible):
+  tyre grip falls with slip (full grip to 4 m/s of slip, 75% sliding at 12 m/s — set per
+  wheel contact each step in `Bike.tyreGrip`); motor power fades from 120 km/h to 70% at
+  top speed; engine braking (regen, 100 N·m, fading to 0 at a standstill, ground only);
+  rear linkage gets stiffer deeper in the stroke (`rearForceTable`, softer rear cushion).
 - Grip: `wheelGrip` IS the friction coefficient (0.85, packed dirt). Planck mixes
   friction as √(tyre × ground) and the ground is 1, so `applyTuning` sets the tyre to grip².
 - Air drag (½ρ·CdA·v²) on the chassis and rolling resistance on wheels in contact:
@@ -190,7 +196,7 @@ level system with zones; test level ("Test Track"); time-trial flow (clock start
 first input, crash/finish rules, live flip counting with time bonus); HUD with speed,
 best time and checkpoint splits; ghost of your best run; finish screen with ride
 stats; rider legs that soak up landings (too-hard landings crash); camera; tuning
-panel; swappable art; physics report; 55/55 automated tests.
+panel; swappable art; physics report; 62/62 automated tests.
 
 Known things to handle in Week 2:
 - Build the 4 levels with the "normal theme for now" look (ask before adding themes).

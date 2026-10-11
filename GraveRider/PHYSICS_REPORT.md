@@ -19,12 +19,12 @@ game's own physics engine (Planck.js) with the bike set up as in `js/config.js`:
 
 | Drop onto flat ground | Rear travel used | Front travel used | Rider's legs bent | Peak g on the rider | Rider thrown off? |
 |---|---|---|---|---|---|
-| 0.5 m | 61% | 58% | 36% | 2.2 g | no |
-| 1 m | 81% | 76% | 57% | 3.3 g | no |
-| 2 m | 96% | 93% | 97% | 4.8 g | no |
-| 3 m | 100% | 100% | 100% | 10.1 g | yes |
-| 4 m | 100% | 101% | 100% | 11.7 g | yes |
-| 5 m | 100% | 100% | 100% | 15.6 g | yes |
+| 0.5 m | 59% | 58% | 37% | 2.2 g | no |
+| 1 m | 75% | 77% | 60% | 3.4 g | no |
+| 2 m | 92% | 94% | 97% | 4.9 g | no |
+| 3 m | 100% | 100% | 100% | 9.9 g | no |
+| 4 m | 100% | 101% | 100% | 11.6 g | yes |
+| 5 m | 100% | 100% | 100% | 15.5 g | yes |
 
 Over 100% means it hit the bottoming stop (a real bike bottoms out too on big flat landings).
 The rider's legs are a spring + damper (15000 N/m, 14 cm of crouch). Over 10 g on the rider throws them off.
@@ -35,7 +35,7 @@ Real-world reference: a 2 m drop to flat is about 4–8 g (rideable); 5 m is abo
 | | 0–50 km/h | 0–100 km/h | Distance in 5 s | Highest wheelie | Top speed reached | Flipped over? |
 |---|---|---|---|---|---|---|
 | Real life (game default): rider leans forward first | 2.1 s | 4.5 s | 81 m | 3° | 145 km/h | no |
-| Real life: neutral stance, throttle pinned | — | — | — | 146° | 29 km/h | yes, after 1.1 s |
+| Real life: neutral stance, throttle pinned | — | — | — | 145° | 29 km/h | yes, after 1.1 s |
 | Rider throttle help = 1 (T panel) | 2.6 s | 5.9 s | 66 m | 21° | 145 km/h | no |
 
 Steady top speed on flat ground from power vs drag: 145 km/h (capped by the motor's max speed).
@@ -47,28 +47,28 @@ Leaning has to come first: a real rider needs about 0.35 s to shift their weight
 
 ## Braking from 60 km/h (front + rear)
 
-- Stops in **19.5 m** and **2.1 s** (average **0.73 g**). Real MX bikes on a prepared dirt track: about 0.6–0.8 g.
+- Stops in **20.4 m** and **2.2 s** (average **0.70 g**). Real MX bikes on a prepared dirt track: about 0.6–0.8 g.
 
 ## Hill climbing (long straight slope, full throttle for 6 s, rider leaning forward the whole time)
 
 | Slope | Start speed | Still climbing after 6 s? | Height gained | Speed after 6 s | Max steady speed if grip were unlimited (power limit) |
 |---|---|---|---|---|---|
-| 15° | standstill | yes | 18.7 m | 82 km/h | 145 km/h |
-| 15° | 50 km/h | yes | 35.7 m | 110 km/h | 145 km/h |
-| 20° | standstill | yes | 19.2 m | 64 km/h | 145 km/h |
-| 20° | 50 km/h | yes | 42.5 m | 95 km/h | 145 km/h |
-| 25° | standstill | yes | 17.3 m | 47 km/h | 140 km/h |
-| 25° | 50 km/h | yes | 46.4 m | 80 km/h | 140 km/h |
-| 30° | standstill | yes | 13.1 m | 29 km/h | 132 km/h |
-| 30° | 50 km/h | yes | 47.6 m | 63 km/h | 132 km/h |
-| 35° | standstill | no — loops over / crashes | 1.5 m | — | 125 km/h |
-| 35° | 50 km/h | yes | 45.5 m | 46 km/h | 125 km/h |
+| 15° | standstill | yes | 16.9 m | 78 km/h | 145 km/h |
+| 15° | 50 km/h | yes | 35.1 m | 109 km/h | 145 km/h |
+| 20° | standstill | yes | 16.8 m | 61 km/h | 145 km/h |
+| 20° | 50 km/h | yes | 41.7 m | 95 km/h | 145 km/h |
+| 25° | standstill | yes | 13.8 m | 42 km/h | 140 km/h |
+| 25° | 50 km/h | yes | 45.1 m | 78 km/h | 140 km/h |
+| 30° | standstill | yes | 8.4 m | 23 km/h | 132 km/h |
+| 30° | 50 km/h | yes | 45.8 m | 62 km/h | 132 km/h |
+| 35° | standstill | yes | 1.0 m | 4 km/h | 125 km/h |
+| 35° | 50 km/h | yes | 43.2 m | 44 km/h | 125 km/h |
 | 40° | standstill | no — stops and slides back | 0.0 m | 0 km/h | 118 km/h |
-| 40° | 50 km/h | yes | 40.8 m | 27 km/h | 118 km/h |
-| 45° | standstill | no — stops and slides back | 0.0 m | 0 km/h | 113 km/h |
-| 45° | 50 km/h | yes | 33.0 m | 8 km/h | 113 km/h |
-| 50° | standstill | no — stops and slides back | 0.0 m | 0 km/h | 108 km/h |
-| 50° | 50 km/h | no — stops and slides back | 24.4 m | 0 km/h | 108 km/h |
+| 40° | 50 km/h | yes | 37.9 m | 25 km/h | 118 km/h |
+| 45° | standstill | no — loops over / crashes | 0.0 m | — | 113 km/h |
+| 45° | 50 km/h | yes | 29.6 m | 5 km/h | 113 km/h |
+| 50° | standstill | no — loops over / crashes | 0.0 m | — | 108 km/h |
+| 50° | 50 km/h | no — stops and slides back | 22.9 m | 0 km/h | 108 km/h |
 
 With 50 km/h of run-up the bike also carries momentum: speed alone is worth about 10 m of height.
 
