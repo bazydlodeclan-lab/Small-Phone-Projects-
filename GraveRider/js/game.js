@@ -177,9 +177,11 @@ var Game = (function () {
   }
 
   // at = { x, y } in level pixels
-  function spawnBike(at) {
+  // (afterCrash: the rider starts already leaning forward, ready to launch)
+  function spawnBike(at, afterCrash) {
     if (state.bike) Bike.remove(world, state.bike);
     state.bike = Bike.create(world, at.x / PPM, at.y / PPM);
+    if (afterCrash) Bike.leanForward(state.bike);
     state.airSteps = 0;
     state.airUpright = 0; // a new bike starts upright
     state.airMin = 0;
@@ -274,7 +276,7 @@ var Game = (function () {
       state.crashTimerMs += dt;
       if (state.crashTimerMs >= CONFIG.crashRestartDelayMs) {
         state.mode = "playing";
-        spawnBike(state.checkpoint);
+        spawnBike(state.checkpoint, true);
       }
     }
 
@@ -418,6 +420,10 @@ var Game = (function () {
     if (e.target && e.target.tagName === "TEXTAREA") return;
     if (KEYS[e.code]) { input[KEYS[e.code]] = true; e.preventDefault(); }
     if (e.code === "KeyR" && !e.repeat) loadLevel(state.levelIndex);
+    // N = next level, 1-4 = pick a level
+    if (e.code === "KeyN" && !e.repeat) loadLevel((state.levelIndex + 1) % LEVELS.length);
+    var pick = /^(Digit|Numpad)([1-9])$/.exec(e.code);
+    if (pick && !e.repeat && LEVELS[pick[2] - 1]) loadLevel(pick[2] - 1);
     if (e.code === "KeyT" && !e.repeat) Tuning.toggle();
   });
   window.addEventListener("keyup", function (e) {
@@ -659,6 +665,12 @@ var Game = (function () {
     ctx.font = "16px monospace";
     ctx.fillText(unit[1], viewW - 22, viewH - 30);
 
+    // Level name, top centre
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = "bold 18px sans-serif";
+    ctx.fillText(state.level.name + "  (" + (state.levelIndex + 1) + "/" + LEVELS.length + ")", viewW / 2, 30);
+
     if (state.zone && state.zone.label) {
       ctx.textAlign = "right";
       ctx.fillStyle = "#9fdcff";
@@ -681,9 +693,14 @@ var Game = (function () {
       ctx.fillStyle = "#fff";
       ctx.font = "bold 30px sans-serif";
       ctx.fillText("Press any control to start", viewW / 2, viewH * 0.3);
+      if (state.level.tip) {
+        ctx.fillStyle = "#ffd23f";
+        ctx.font = "bold 18px sans-serif";
+        ctx.fillText(state.level.tip, viewW / 2, viewH * 0.3 + 34);
+      }
     }
     if (state.mode === "ready" || (state.timeMs < 6000 && state.mode === "playing")) {
-      var hint = "UP/W gas   DOWN/S brake + reverse   LEFT/A lean back   RIGHT/D lean forward   R restart   T tuning";
+      var hint = "UP/W gas   DOWN/S brake + reverse   LEFT/A lean back   RIGHT/D lean forward   R restart   N next level   T tuning";
       ctx.fillStyle = "rgba(255,255,255,0.7)";
       ctx.font = "15px monospace";
       var hw = ctx.measureText(hint).width;
@@ -751,7 +768,7 @@ var Game = (function () {
     }
     ctx.fillStyle = "#ffd23f";
     ctx.font = "bold 22px sans-serif";
-    ctx.fillText("Press R to ride again", cx, y + h - 20);
+    ctx.fillText("R ride again    N next level", cx, y + h - 20);
     ctx.restore();
   }
 

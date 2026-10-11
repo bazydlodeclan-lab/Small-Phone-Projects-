@@ -501,6 +501,15 @@ var Bike = (function () {
     }
   }
 
+  // Put the rider in the forward-leaning position (used when restarting after a
+  // crash, so holding gas + lean forward doesn't loop the bike out)
+  function leanForward(bike) {
+    var peg = bike.chassis.getWorldPoint(v(GEO.footpeg)), a = CONFIG.riderLeanForward;
+    var p = bike.rider.getPosition(), dx = p.x - peg.x, dy = p.y - peg.y;
+    bike.rider.setTransform(Vec2(peg.x + dx * Math.cos(a) - dy * Math.sin(a), peg.y + dx * Math.sin(a) + dy * Math.cos(a)),
+      bike.rider.getAngle() + a);
+  }
+
   // --- The rider lets go when they crash ---
   function letGo(bike) {
     if (bike.crashed) return;
@@ -715,6 +724,7 @@ var Bike = (function () {
     onGround: onGround,
     touching: touching,
     tyreGrip: tyreGrip,
+    leanForward: leanForward,
     loadArt: loadArt,
     poseOf: poseOf,
     draw: draw,

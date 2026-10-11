@@ -136,6 +136,8 @@ function installHelpers() {
   await page.goto("file://" + path.join(ROOT, "index.html"));
   await page.waitForTimeout(1000);
   await page.evaluate(installHelpers);
+  // The tests ride the test track: put it first so Game.loadLevel(0) and R use it
+  await page.evaluate(() => { if (LEVELS[0] !== TEST_TRACK) LEVELS.unshift(TEST_TRACK); Game.loadLevel(0); });
   const shot = (name) => page.screenshot({ path: path.join(SHOTS, name + ".png") });
   const bike = () => page.evaluate(() => {
     const s = Game.state, c = s.bike.chassis, p = Game.bikePos();

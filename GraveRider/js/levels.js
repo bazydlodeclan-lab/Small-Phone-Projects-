@@ -66,8 +66,8 @@ var Shapes = {
   }
 };
 
-var LEVELS = [
-  // ---------------- TEST LEVEL ----------------
+// The test track: not one of the 4 levels you play (the automated tests ride it)
+var TEST_TRACK =
   {
     name: "Test Track",
     physics: { gravityScale: 1, gravityDir: { x: 0, y: 1 }, bounce: 0, friction: 1 },
@@ -130,5 +130,65 @@ var LEVELS = [
     // Physics zones (none on the test track for now; the system still works,
     // e.g. { x, y, w, h, label, color, physics: { gravityScale: 0.35 } })
     zones: []
-  }
+  };
+
+// ---------------- THE LEVELS, in play order ----------------
+var LEVELS = [
+  // ---------------- LEVEL 1 (tutorial) ----------------
+  // About 420 m, 35-45 s. Rolling hills, two tabletops, a short hill, rollers and a
+  // small double, all with long, forgiving downhill landings (good up to ~85 km/h),
+  // and a checkpoint before every jump. Built with relative pieces (see "build"):
+  // every piece starts where the last one ended. testRide = how the automated test
+  // rider (tests/ride-levels.js) rides it: from each x it aims for that speed (km/h).
+  (function () {
+    var pts = [{ x: -600, y: 0 }], cp = [];
+    var cx = -600, cy = 0;
+    function add(list) { // list = absolute points; continue from its last point
+      list.forEach(function (p) { if (Math.abs(p.x - cx) > 0.01 || Math.abs(p.y - cy) > 0.01) pts.push(p); });
+      var l = list[list.length - 1]; cx = l.x; cy = l.y;
+    }
+    function flat(dx) { add([{ x: cx + dx, y: cy }]); }
+    function ramp(dx, dy) { add([{ x: cx + dx, y: cy + dy }]); }                 // straight slope (dy < 0 = up)
+    function lip(dx, dy) { add(Shapes.kicker(cx, cy, cx + dx, cy + dy, 12)); }   // slope that curves up more and more
+    function ease(dx, dy) { add(Shapes.kicker(cx + dx, cy + dy, cx, cy, 12).reverse()); } // slope that eases out to flat
+    function bump(dx, dy) { add(Shapes.curve(cx, cy, cx + dx, cy + dy, 14)); }  // smooth S-shaped change of height
+    function checkpoint() { cp.push({ x: cx, y: cy - 40 }); }
+    function table(lipDx, lipDy, top, landDx, landDy, easeDx, easeDy) {          // tabletop: lip, flat top, long landing
+      lip(lipDx, lipDy); flat(top); ramp(80, -lipDy * 0.17); ramp(landDx, landDy); ease(easeDx, easeDy);
+    }
+    flat(1300);                                   // flat start: lean forward first, then open the throttle
+    add(Shapes.hills(700, 2300, 0, 29, 800));     // gentle rollers
+    cx = 2300; cy = 0;
+    flat(200);
+    table(560, -58, 600, 2200, 550, 900, 100);    // tabletop 1 (0.9 m): lands on a 14 deg downhill
+    flat(300); checkpoint(); flat(300);
+    bump(1400, -180); flat(300); bump(1400, 180); // short hill
+    flat(200); checkpoint();
+    var hx = cx, hy = cy;                          // rollers (0.4 m)
+    add(Shapes.hills(hx, hx + 1600, hy, 26, 800)); cx = hx + 1600; cy = hy;
+    flat(200); bump(1000, 160);                   // easy downhill
+    bump(1300, -160); flat(300); checkpoint(); flat(300);   // gentle climb
+    table(540, -77, 640, 2800, 700, 1000, 125);   // tabletop 2 (1.2 m)
+    flat(300); checkpoint(); flat(500);
+    lip(660, -96); ramp(120, 50); flat(106); ramp(107, -45); // small double: 1.5 m lip, 5 m gap
+    ramp(80, 10); ramp(2400, 600); ease(1000, 100);           // long 14 deg landing
+    flat(400);
+    var finishX = cx;
+    flat(3600);                                    // run-out: room to brake after the finish line (56 m)
+    add([{ x: cx + 200, y: cy - 600 }]);            // end wall
+    return {
+      name: "Level 1",
+      tip: "Tip: hold RIGHT (lean forward) for a moment BEFORE you press UP, or the bike flips back",
+      physics: {},
+      groundColor: "#6b4f3a",
+      groundTopColor: "#a07e5e",
+      start: { x: 0, y: -40 },
+      checkpoints: cp,
+      finish: { x: finishX },
+      fallLimitY: cy + 800, // falling below this counts as a crash
+      terrain: [pts],
+      zones: [],
+      testRide: [{ x: -1e9, kmh: 45 }, { x: 7000, kmh: 50 }, { x: 14000, kmh: 45 }, { x: 18000, kmh: 50 }]
+    };
+  })()
 ];

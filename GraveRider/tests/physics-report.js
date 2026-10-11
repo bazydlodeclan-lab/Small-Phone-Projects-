@@ -19,6 +19,7 @@ const ROOT = path.join(__dirname, "..");
   const R = await page.evaluate(() => {
     const G = Game, s = G.state, PPM = CONFIG.pixelsPerMetre;
     s.paused = true;
+    const levelCount = LEVELS.length; // the lab tracks below are put at index 9, then removed
     const DT = CONFIG.physicsStepSec;
     const none = { gas: false, brake: false, leanBack: false, leanForward: false };
 
@@ -193,7 +194,7 @@ const ROOT = path.join(__dirname, "..");
     }
     out.drops = [0.5, 1, 2, 3, 4, 5].map(drop);
 
-    reset(); delete LEVELS[9]; LEVELS.length = 1; G.loadLevel(0); s.paused = false;
+    reset(); LEVELS.length = levelCount; G.loadLevel(0); s.paused = false;
     out.config = JSON.parse(JSON.stringify(CONFIG));
     return out;
   });

@@ -49,7 +49,7 @@ Double-click `index.html`. No server, no install, works offline
 (Planck.js is stored locally in `lib/`).
 
 Controls: Up/W gas · Down/S brake, then reverse once stopped · Left/A lean back ·
-Right/D lean forward · R restart level · T tuning panel.
+Right/D lean forward · R restart level · N next level · 1-4 pick a level · T tuning panel.
 Technique (real physics): lean forward FIRST, then open the throttle, or the bike
 loops out. In the air, throttle lifts the nose and brake drops it.
 
@@ -67,6 +67,7 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 | `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain (Planck chain shapes), physics zones, race flow (ready → playing → crashed/finished), flips, ride stats, checkpoint splits, `Records` (best times in localStorage, wrapped in try/catch), ghost recording/playback, camera, input, drawing, HUD, finish screen. Also `Tuning` (the T panel: sliders, Copy settings, Reset, Clear best times). |
 | `art/` | `bike.svg`, `wheel.svg` (front), `rear-wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
 | `tests/run-tests.js` | Automated Playwright tests (62 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
+| `tests/ride-levels.js` | Rides every level in `js/levels.js` with a test rider at 0.9 / 1.0 / 1.1 × its `testRide` speeds. Rules: finishes, 0 crashes, never stuck, landings under 9 g, 50 m run-out. Run: `node tests/ride-levels.js` (or `node tests/ride-levels.js 1`). Run it after changing any level or the physics. |
 | `tests/physics-report.js` | Runs physics experiments (sag, drops, acceleration, braking, hill climbs, reversing, leaning, throttle/brake in the air) and writes `PHYSICS_REPORT.md`. Re-run after changing `config.js`. |
 
 ### Level data format (`js/levels.js`)
@@ -198,7 +199,7 @@ best time and checkpoint splits; ghost of your best run; finish screen with ride
 stats; rider legs that soak up landings (too-hard landings crash); camera; tuning
 panel; swappable art; physics report; 62/62 automated tests.
 
-Known things to handle in Week 2:
+Known things to handle in Week 2 (Level 1 done, 2-4 to go):
 - Build the 4 levels with the "normal theme for now" look (ask before adding themes).
 - Levels for real riding: give the rider room to lean forward before throttling,
   build flip jumps as freestyle ramps (steep ~43° lip, landing ramp ~15 m away, long
@@ -206,5 +207,12 @@ Known things to handle in Week 2:
   watch hill faces over ~35° (a standstill climb fails at 40° on 0.85 grip).
 - Bat level (if it stays): gravity pointing up — check crash detection, throttle
   help (uses the slope under the rear tyre), flip counting and camera framing.
-- The test level is a placeholder; replace it with the 4 real levels.
+- Level 1 (tutorial) is done: ~410 m, 30-40 s for the test rider, two tabletops, a short hill,
+  rollers and a small double, 4 checkpoints, landings good to ~85 km/h, a start tip. It is built
+  with relative pieces (`flat/ramp/lip/ease/bump/table`) in `js/levels.js`. A rider who never
+  lifts the throttle reaches 120+ km/h on the long downhills and may crash at jumps (real life).
+  After a crash the rider restarts already leaning forward (so holding gas + lean works).
+- Build levels 2-4 the same way (design -> `node tests/ride-levels.js` -> look at screenshots ->
+  try player styles: never lifts gas / lifts above 70 km/h / cautious 35 km/h). The Test Track
+  (`TEST_TRACK`) is only for the automated tests, not part of the game.
 - Final art (Week 3): replace the files in `art/` following `art/README.md`.
