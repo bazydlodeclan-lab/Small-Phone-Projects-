@@ -51,7 +51,7 @@ function installHelpers() {
           if (e < -0.1) inp.leanForward = true;
           if (e > 0.1) inp.leanBack = true;
         }
-        if (px > 1900 && px < 3150 && kmh > 40) { inp.gas = false; inp.brake = kmh > 50; }
+        if (px > 1900 && px < 3150 && kmh > 34) { inp.gas = false; inp.brake = kmh > 44; }
         if (px > 4450 && px < 5560 && kmh > 35) { inp.gas = false; inp.brake = kmh > 45; }
         Object.assign(G.input, inp);
         G.step();
@@ -315,7 +315,7 @@ function installHelpers() {
   });
   check("Checkpoint is reached", run.cp === 0);
   check("Physics zones change gravity", Math.abs(run.zoneGravity - 9.81 * 0.35) < 0.01, "gravity in zone " + run.zoneGravity.toFixed(2) + " m/s²");
-  check("Finish line ends the level", run.mode === "finished",
+  check("Finish line ends the level (no crashes on the way)", run.mode === "finished" && run.crashes === 0,
     "time " + (run.race / 1000).toFixed(2) + " s, crashes " + run.crashes);
   check("Clock stops at the finish", run.timeMs === run.finishedAt);
   check("After the finish the bike brakes to a stop upright (no driving on, no rolling back)",
@@ -718,6 +718,60 @@ function installHelpers() {
     "tyre grip " + (more.gripOnTyre === null ? "?" : more.gripOnTyre.toFixed(3)));
   check("Shown times and differences add up", more.timeShown === "0:13.75" && more.deltaShown === "-0.01",
     more.timeShown + ", " + more.deltaShown);
+
+  // 17. Round-3 fixes: steep downhill braking, legs under changed gravity, hard landing on a ceiling
+  const r3 = await page.evaluate(() => {
+    const G = Game, s = G.state; s.paused = true;
+    const PPM = CONFIG.pixelsPerMetre, out = {};
+    // a) rolling down a 34° slope at 4 m/s with Down held: no flip over the bars
+    const t = Math.tan(34 * Math.PI / 180);
+    LEVELS.push({ name: "Steep", physics: {}, groundColor: "#000", groundTopColor: "#000",
+      start: { x: 20 * PPM, y: (20 * t - 0.95) * PPM }, checkpoints: [], finish: { x: 1e9 }, fallLimitY: 1e9, zones: [],
+      terrain: [[{ x: -100 * PPM, y: -100 * t * PPM }, { x: 100 * PPM, y: 100 * t * PPM }]] });
+    Object.assign(G.input, T.none); G.loadLevel(LEVELS.length - 1);
+    let b = s.bike, c = b.chassis.getPosition(), ang = Math.atan(t);
+    [b.chassis, b.rider, b.rear.wheel, b.front.wheel].forEach(body => {
+      const p = body.getPosition(), dx = p.x - c.x, dy = p.y - c.y;
+      body.setTransform(planck.Vec2(c.x + dx * Math.cos(ang) - dy * Math.sin(ang), c.y + dx * Math.sin(ang) + dy * Math.cos(ang)), body.getAngle() + ang);
+      body.setLinearVelocity(planck.Vec2(4 * Math.cos(ang), 4 * Math.sin(ang)));
+    });
+    Object.assign(G.input, T.none, { brake: true });
+    let worst = 0;
+    for (let i = 0; i < 360 && s.mode !== "crashed"; i++) { G.step(); const a = s.bike.chassis.getAngle(); worst = Math.max(worst, Math.abs(Math.atan2(Math.sin(a - ang), Math.cos(a - ang)))); }
+    out.steepMode = s.mode; out.steepTilt = worst;
+    Object.assign(G.input, T.none); LEVELS.pop();
+    // b) gravity slider moved while riding: the legs still rest in the attack position
+    G.loadLevel(T.flatLevel());
+    Object.assign(G.input, T.none, { brake: true }); G.step(); Object.assign(G.input, T.none);
+    CONFIG.gravity = 2.5;
+    for (let i = 0; i < 240; i++) G.step();
+    out.crouchAtHighGravity = s.bike.crouch;
+    CONFIG.gravity = CONFIG_DEFAULTS.gravity; LEVELS.pop();
+    // c) hard landing on a ceiling (gravity up) is judged like one on the floor
+    LEVELS.push({ name: "Ceiling", physics: { gravityDir: { x: 0, y: -1 } }, groundColor: "#000", groundTopColor: "#000",
+      start: { x: 0, y: -40 }, checkpoints: [], finish: { x: 1e9 }, fallLimitY: 1e9, fallLimitTopY: -1e9, zones: [],
+      terrain: [[{ x: -600, y: -2000 }, { x: 20000, y: -2000 }]] });
+    G.loadLevel(LEVELS.length - 1);
+    G.spawnBike({ x: 0, y: -2000 + 0.66 * PPM + 5 * PPM });
+    // turn the bike upside down so it falls up wheels-first
+    b = s.bike; c = b.chassis.getPosition();
+    [b.chassis, b.rider, b.rear.wheel, b.front.wheel].forEach(body => {
+      const p = body.getPosition(), dx = p.x - c.x, dy = p.y - c.y;
+      body.setTransform(planck.Vec2(c.x - dx, c.y - dy), body.getAngle() + Math.PI);
+    });
+    Object.assign(G.input, T.none, { brake: true }); G.step(); Object.assign(G.input, T.none);
+    let peak = 0;
+    for (let i = 0; i < 240 && s.mode === "playing"; i++) { G.step(); peak = Math.max(peak, s.bike.riderG); }
+    out.ceilingMode = s.mode; out.ceilingPeak = peak;
+    LEVELS.pop(); G.loadLevel(0); s.paused = false;
+    return out;
+  });
+  check("Holding Down while rolling down a 34° slope doesn't flip the bike", r3.steepMode !== "crashed" && r3.steepTilt < 0.8,
+    r3.steepMode + ", worst tilt " + (r3.steepTilt * 57.3).toFixed(0) + "°");
+  check("Legs keep the attack position when the gravity slider moves mid-ride", Math.abs(r3.crouchAtHighGravity) < 0.01,
+    "crouch " + (r3.crouchAtHighGravity * 1000).toFixed(0) + " mm");
+  check("A hard landing on a ceiling (gravity up) throws the rider off too", r3.ceilingMode === "crashed" && r3.ceilingPeak > 10,
+    r3.ceilingMode + ", peak " + r3.ceilingPeak.toFixed(1) + " g");
 
   check("No console errors during all tests", errors.length === 0, errors.join(" | "));
   await browser.close();

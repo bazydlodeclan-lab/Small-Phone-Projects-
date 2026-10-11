@@ -264,6 +264,11 @@ var Bike = (function () {
         CONFIG.legStiffness, CONFIG.legDamping, CONFIG.riderMass);
     }
 
+    // Legs' rest point follows the gravity actually in use (level, zone, slider)
+    if (bike.hips) {
+      bike.hips.getLocalAnchorA().y = GEO.footpeg.y - CONFIG.riderMass * Vec2.lengthOf(bike.world.getGravity()) / CONFIG.legStiffness;
+    }
+
     // Anti-squat: accelerating moves weight onto the rear wheel. On a real
     // bike the chain pull and swingarm angle hold the rear up against this
     // (otherwise the rear sinks and tips the nose up). This rear wheel slides
@@ -309,7 +314,9 @@ var Bike = (function () {
     c.applyForce(Vec2(-ux * drag, -uy * drag), c.getWorldCenter(), true);
     // Rolling resistance on each wheel touching the ground (on a slope the
     // tyres press on the ground with only cos(slope) of the weight)
-    var weight = (CONFIG.bikeMass + CONFIG.riderMass) * gravity * Math.cos(bike.groundAngle);
+    var g = bike.world.getGravity(); // how much of the weight presses on the ground: measured from "down"
+    var load = Math.max(0, Math.cos(bike.groundAngle - Math.atan2(-g.x, g.y)));
+    var weight = (CONFIG.bikeMass + CONFIG.riderMass) * gravity * load;
     [[bike.rear, bike.rearOnGround, 0.55], [bike.front, bike.frontOnGround, 0.45]].forEach(function (e) {
       if (!e[1]) return;
       var f = CONFIG.rollingResistance * weight * e[2];
@@ -397,7 +404,7 @@ var Bike = (function () {
           // the rear comes back down instead of going over the bars
           var a = c.getAngle() - bike.groundAngle;
           var noseDown = Math.atan2(Math.sin(a), Math.cos(a));
-          front *= c.getAngularVelocity() > 0 ? 0 : Math.max(0, 0.25 * (1 - noseDown / 0.1));
+          front *= c.getAngularVelocity() > 0 ? 0 : 0.25 * Math.max(0, Math.min(1, 1 - noseDown / 0.1));
           rear = 0;
         }
         rearJ.enableMotor(true); rearJ.setMotorSpeed(0); rearJ.setMaxMotorTorque(rear);
@@ -409,7 +416,7 @@ var Bike = (function () {
         rearJ.setMaxMotorTorque(CONFIG.reverseTorque);
         // If it still rolls forward (a downhill too steep to back up), the
         // front brake holds it instead of letting it creep down
-        if (forwardSpeed > 0.02) {
+        if (forwardSpeed > 0.02 && !(bike.rearAir > 2)) {
           frontJ.enableMotor(true); frontJ.setMotorSpeed(0); frontJ.setMaxMotorTorque(CONFIG.frontBrakeTorque);
         } else {
           frontJ.enableMotor(false);
@@ -514,7 +521,9 @@ var Bike = (function () {
       var rv = bike.rider.getLinearVelocity(), dt = CONFIG.physicsStepSec;
       if (bike.riderVel) {
         bike.riderAccel.shift();
-        bike.riderAccel.push(-(rv.y - bike.riderVel.y) / dt / 9.81); // + = pushed up
+        // along the bike's up axis (so it also works under flipped or sideways gravity)
+        var up = bike.chassis.getWorldVector(Vec2(0, -1));
+        bike.riderAccel.push(((rv.x - bike.riderVel.x) * up.x + (rv.y - bike.riderVel.y) * up.y) / dt / 9.81); // + = pushed up
         bike.riderG = (bike.riderAccel[0] + bike.riderAccel[1] + bike.riderAccel[2]) / 3;
       }
       bike.riderVel = { x: rv.x, y: rv.y };
