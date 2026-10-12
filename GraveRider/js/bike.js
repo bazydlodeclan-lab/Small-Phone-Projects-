@@ -178,6 +178,12 @@ var Bike = (function () {
       traction: 1,    // traction control's power share (0.15..1)
       mu: null,       // grip and bounce last set on the tyres (see applyTuning)
       bounce: null,
+      frontLoad: 0,   // how hard each tyre presses on the ground (N), from last step
+      rearLoad: 0,
+      slipFront: 0,   // how much faster/slower each tyre surface moves than the ground (m/s)
+      slipRear: 0,
+      absFront: 1,    // brake assist's share of braking left on each wheel
+      absRear: 1,
       rearDrive: 0    // forward push of the ground on the rear tyre last step (N)
     };
     suspension(bike);
@@ -305,7 +311,7 @@ var Bike = (function () {
   // fast the tyre surface moves compared with the ground (spin or skid).
   function tyreGrip(bike) {
     [bike.rear, bike.front].forEach(function (s) {
-      var w = s.wheel;
+      var w = s.wheel, isFront = s === bike.front, load = 0, slipMax = 0;
       for (var ce = w.getContactList(); ce; ce = ce.next) {
         var ct = ce.contact;
         if (!ct.isTouching() || ce.other.getUserData() !== "ground") continue;
@@ -318,7 +324,12 @@ var Bike = (function () {
         var share = slip <= CONFIG.slipFull ? 1 :
           1 - (1 - CONFIG.slidingGrip) * Math.min(1, (slip - CONFIG.slipFull) / Math.max(0.1, CONFIG.slipSliding - CONFIG.slipFull));
         ct.setFriction((bike.mu || 0) * share);
+        slipMax = Math.max(slipMax, slip);
+        var m = ct.getManifold();
+        for (var k = 0; k < m.pointCount; k++) load += m.points[k].normalImpulse / CONFIG.physicsStepSec;
       }
+      if (isFront) { bike.slipFront = slipMax; bike.frontLoad = load; }
+      else { bike.slipRear = slipMax; bike.rearLoad = load; }
     });
   }
 
@@ -376,7 +387,34 @@ var Bike = (function () {
   function throttleFactor(bike) {
     if (!bike.rearOnGround) return 1;
     var f = CONFIG.tractionControl ? wheelspinControl(bike) : 1;
-    return f * (1 - CONFIG.throttleControl * (1 - wheelieControl(bike)));
+    // Keep the front wheel on the ground: as it unloads, cut the power
+    // (only when the nose lifts compared with the slope; on a ramp lip the front
+    // unloads because the ground curves up, and the power should stay on)
+    var rel = bike.chassis.getAngle() - bike.groundAngle;
+    var noseUp = -Math.atan2(Math.sin(rel), Math.cos(rel));
+    var lifting = Math.max(0, Math.min(1, noseUp / 0.02));
+    var keepDown = 1 - lifting * (1 - loadShare(bike.frontLoad, bike));
+    return f * (1 - CONFIG.throttleControl * (1 - Math.min(wheelieControl(bike), keepDown)));
+  }
+
+  // 1 when a wheel carries a fair share of the weight, falling to 0 as it
+  // is about to lift off the ground
+  function loadShare(load, bike) {
+    var W = (CONFIG.bikeMass + CONFIG.riderMass) * Vec2.lengthOf(bike.world.getGravity());
+    return Math.max(0, Math.min(1, (load - 0.03 * W) / (0.07 * W)));
+  }
+
+  // Brake assist for one wheel: no stoppies, no locked wheel (ABS-like)
+  function brakeShare(bike, which, otherLoad) {
+    var a = CONFIG.brakeAssist;
+    if (!(a > 0)) return 1;
+    var slip = which === "front" ? bike.slipFront : bike.slipRear;
+    var target = slip <= CONFIG.slipFull ? 1 : Math.max(0.1, 1 - (slip - CONFIG.slipFull) / 4);
+    var key = which === "front" ? "absFront" : "absRear";
+    bike[key] += (target - bike[key]) * 0.35;
+    // front brake must not lift the rear; rear brake must not lift... nothing (it just must not lock)
+    var down = which === "front" ? loadShare(otherLoad, bike) : 1;
+    return 1 - a * (1 - Math.min(bike[key], down));
   }
 
   // Keeps the tyre surface within a few m/s of the bike's speed
@@ -429,7 +467,7 @@ var Bike = (function () {
       // Throttle help in the air: the rider holds the throttle steady instead
       // of pinning it, so the wheel keeps pace with the bike (a racing wheel
       // twists the bike nose-up). 0 = real life, full throttle in the air.
-      if (CONFIG.throttleControl > 0 && bike.rearAir > 5 && bike.frontAir > 5) {
+      if (CONFIG.throttleControl > 0 && bike.rearAir > 5 && bike.frontAir > 5 && !input.leanBack) { // (leaning back = going for a flip: full throttle lifts the nose)
         var matched = Math.min(targetSpin, Math.hypot(vel.x, vel.y) / Rr);
         targetSpin += (matched - targetSpin) * Math.min(1, CONFIG.throttleControl);
       }
@@ -452,6 +490,10 @@ var Bike = (function () {
           var noseDown = Math.atan2(Math.sin(a), Math.cos(a));
           front *= c.getAngularVelocity() > 0 ? 0 : 0.25 * Math.max(0, Math.min(1, 1 - noseDown / 0.1));
           rear = 0;
+        }
+        if (!input.holdStill) { // (the start-line / after-finish hold needs full brakes)
+          front *= brakeShare(bike, "front", bike.rearLoad);
+          rear *= brakeShare(bike, "rear", 0);
         }
         rearJ.enableMotor(true); rearJ.setMotorSpeed(0); rearJ.setMaxMotorTorque(rear);
         frontJ.enableMotor(true); frontJ.setMotorSpeed(0); frontJ.setMaxMotorTorque(front);

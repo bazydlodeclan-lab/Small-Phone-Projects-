@@ -66,7 +66,7 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
 | `js/bike.js` | `Bike`: builds the bike (chassis, 2 wheels on wheel joints, rider body on a hip joint), controls (motor, traction control, throttle help, brakes, reverse, lean, flip assist), suspension (springs, bottoming cushion, anti-squat), crash let-go, ground contact + drive force, drawing from a "pose" (so the ghost uses the same drawing). |
 | `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain (Planck chain shapes), physics zones, race flow (ready → playing → crashed/finished), flips, ride stats, checkpoint splits, `Records` (best times in localStorage, wrapped in try/catch), ghost recording/playback, camera, input, drawing, HUD, finish screen. Also `Tuning` (the T panel: sliders, Copy settings, Reset, Clear best times). |
 | `art/` | `bike.svg`, `wheel.svg` (front), `rear-wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
-| `tests/run-tests.js` | Automated Playwright tests (62 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
+| `tests/run-tests.js` | Automated Playwright tests (63 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
 | `tests/ride-levels.js` | Rides every level in `js/levels.js` with a test rider at 0.9 / 1.0 / 1.1 × its `testRide` speeds. Rules: finishes, 0 crashes, never stuck, landings under 9 g, 50 m run-out. Run: `node tests/ride-levels.js` (or `node tests/ride-levels.js 1`). Run it after changing any level or the physics. |
 | `tests/physics-report.js` | Runs physics experiments (sag, drops, acceleration, braking, hill climbs, reversing, leaning, throttle/brake in the air) and writes `PHYSICS_REPORT.md`. Re-run after changing `config.js`. |
 
@@ -133,6 +133,11 @@ Load order in `index.html` matters: planck → config → levels → bike → ga
   front unloads the fork extends and tips the nose up further, so with grip 0.85
   neutral full throttle loops out in ~1 s, while leaning forward first holds the
   front down (pressing gas and lean together still lifts it: the shift takes ~0.35 s).
+- Rider assists (default ON, adjustable in the T panel; 0 = real life): `throttleControl` cuts
+  the power as the front wheel unloads and the nose lifts compared with the slope (so the
+  front wheel stays on the ground, even at full throttle with neutral lean) and holds the
+  throttle steady in the air unless you lean back (going for a flip). `brakeAssist` keeps the
+  rear wheel down (no stoppie) and stops a wheel locking (ABS-like).
 - Throttle: traction control (the real bike has it) holds rear wheelspin at about
   3-3.5 m/s (its power share eases toward the target instead of switching each step).
   `throttleControl` = rider throttle help, 0..1, default 0 (real life); it eases the
@@ -197,7 +202,7 @@ level system with zones; test level ("Test Track"); time-trial flow (clock start
 first input, crash/finish rules, live flip counting with time bonus); HUD with speed,
 best time and checkpoint splits; ghost of your best run; finish screen with ride
 stats; rider legs that soak up landings (too-hard landings crash); camera; tuning
-panel; swappable art; physics report; 62/62 automated tests.
+panel; swappable art; physics report; 63/63 automated tests.
 
 Known things to handle in Week 2 (Level 1 done, 2-4 to go):
 - Build the 4 levels with the "normal theme for now" look (ask before adding themes).

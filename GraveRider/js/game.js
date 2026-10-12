@@ -815,7 +815,8 @@ var Tuning = (function () {
     { key: "gravity", label: "Gravity (1 = Earth)", min: 0.2, max: 2.5, step: 0.05 },
     { key: "motorPower", label: "Motor power (W)", min: 10000, max: 60000, step: 1000 },
     { key: "flipAssist", label: "Flip assist in the air (N·m, 0 = real life)", min: 0, max: 3000, step: 50 },
-    { key: "throttleControl", label: "Rider throttle help (0 = real life)", min: 0, max: 1, step: 0.05 },
+    { key: "throttleControl", label: "Throttle assist (front wheel stays down; 0 = real life)", min: 0, max: 1, step: 0.05 },
+    { key: "brakeAssist", label: "Brake assist (no stoppie / lock-up; 0 = real life)", min: 0, max: 1, step: 0.05 },
     { key: "suspensionStiffness", label: "Spring stiffness (1 = stock)", min: 0.5, max: 2, step: 0.05 },
     { key: "wheelGrip", label: "Wheel grip", min: 0.2, max: 2, step: 0.05 }
   ];

@@ -178,7 +178,18 @@ function installHelpers() {
   const wheelie = await page.evaluate(() => {
     const G = Game, s = G.state; s.paused = true;
     const lvl = T.flatLevel();
+    function trial2() {
+      Object.assign(G.input, T.none); G.loadLevel(lvl);
+      for (let i = 0; i < 60; i++) G.step();
+      Object.assign(G.input, T.none, { gas: true });
+      let off = 0, maxPitch = 0;
+      for (let i = 0; i < 480; i++) { G.step(); if (s.bike.frontAir > 2) off++; maxPitch = Math.max(maxPitch, -s.bike.chassis.getAngle()); }
+      const r = { mode: s.mode, frontOffSteps: off, maxPitchDeg: Math.round(maxPitch * 57.3), kmh: Math.round(Math.hypot(G.bikeVel().x, G.bikeVel().y) / 64 * 3.6) };
+      Object.assign(G.input, T.none);
+      return r;
+    }
     function trial(inp) {
+      CONFIG.throttleControl = 0; CONFIG.brakeAssist = 0; // real life: no assists
       Object.assign(G.input, T.none); G.loadLevel(lvl);
       for (let i = 0; i < 60; i++) G.step();
       // shift your weight first (takes a real rider about 0.35 s), then open the throttle
@@ -193,11 +204,18 @@ function installHelpers() {
       return r;
     }
     const out = { neutral: trial({ gas: true }), forward: trial({ gas: true, leanForward: true }) };
+    CONFIG.throttleControl = CONFIG_DEFAULTS.throttleControl; CONFIG.brakeAssist = CONFIG_DEFAULTS.brakeAssist;
+    // with the assists on (the default), full throttle with neutral lean keeps the front wheel on the ground
+    const kept = trial2();
+    out.assisted = kept;
     LEVELS.pop(); G.loadLevel(0); s.paused = false;
     return out;
   });
   check("Real life: full throttle, neutral lean loops out", wheelie.neutral.crashed && wheelie.neutral.maxPitchDeg > 90,
     "max wheelie " + wheelie.neutral.maxPitchDeg + "°");
+  check("Throttle assist (default): full throttle with neutral lean keeps the front wheel on the ground the whole time",
+    wheelie.assisted.mode === "playing" && wheelie.assisted.frontOffSteps === 0 && wheelie.assisted.maxPitchDeg < 8,
+    "front wheel off the ground " + wheelie.assisted.frontOffSteps + " steps, max nose-up " + wheelie.assisted.maxPitchDeg + "°, " + wheelie.assisted.kmh + " km/h after 8 s");
   check("Real life: lean forward first, then full throttle keeps the front down", !wheelie.forward.crashed && wheelie.forward.maxPitchDeg < 60,
     "max wheelie " + wheelie.forward.maxPitchDeg + "°, " + wheelie.forward.kmh + " km/h after 5 s");
 
@@ -275,11 +293,11 @@ function installHelpers() {
   // 7. Backflip off a freestyle ramp: counts mid-air and takes time off your time
   const flip = await page.evaluate(() => {
     const s = Game.state; s.paused = true;
-    const r = T.rampBackflip(60);
+    const r = T.rampBackflip(67);
     Game.loadLevel(0); s.paused = false;
     return r;
   });
-  check("Backflip off a freestyle ramp (about 32 mph take-off, default flip assist)", flip.backflips === 1 && flip.crashes === 0 && flip.mode === "finished",
+  check("Backflip off a freestyle ramp (about 34 mph take-off, assists on, default flip assist)", flip.backflips === 1 && flip.crashes === 0 && flip.mode === "finished",
     "backflips " + flip.backflips + ", crashes " + flip.crashes + ", " + flip.mode);
   check("The flip counts mid-air and takes 0.5 s off your time", flip.flipInAir && flip.bonus === 500 && Math.abs(flip.race - (flip.timeMs - 500)) < 1e-6,
     "counted in the air: " + flip.flipInAir + ", time " + (flip.race / 1000).toFixed(2) + " s = clock " + (flip.timeMs / 1000).toFixed(2) + " - 0.5");

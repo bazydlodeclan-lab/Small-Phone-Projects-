@@ -51,11 +51,16 @@ var CONFIG = {
   // spins too much faster than the bike is moving.
   tractionControl: true,
   maxWheelspin: 3,           // m/s the rear tyre may spin faster than the bike [ESTIMATE]
-  // Rider throttle help (slider, 0..1). A key is only on/off, so this eases
-  // the throttle for you when the front wheel comes up too high, and holds it
-  // steady in the air. 0 = real life: full throttle without leaning forward
-  // loops the bike out, just like the real thing. 1 = full help.
-  throttleControl: 0,
+  // Rider assists (sliders, 0..1; both ON by default, like a real racer who
+  // feathers the throttle and brakes for you, since a key is only on/off):
+  //  - throttle assist: eases the power so the front wheel stays on the ground
+  //    (no wheelies / loop-outs), and holds the throttle steady in the air.
+  //  - brake assist: no stoppies (the rear wheel stays down) and no locked
+  //    wheels (like ABS: brakes at the tyre's limit instead of skidding).
+  // 0 = real life: full throttle without leaning forward loops the bike out,
+  // and hard braking can lock a wheel or send you over the bars.
+  throttleControl: 1,
+  brakeAssist: 1,
   wheelieLimit: 0.5,         // wheelie angle (radians, about 29°) where full help backs off completely
 
   // --- Leaning ---
