@@ -156,63 +156,204 @@ var TEST_TRACK =
     zones: []
   };
 
-// ---------------- THE LEVELS, in play order ----------------
-var LEVELS = [
-  // ---------------- LEVEL 1 (tutorial) ----------------
-  // About 420 m, 35-45 s. Rolling hills, two tabletops, a short hill, rollers and a
-  // small double, all with long, forgiving downhill landings (good up to ~85 km/h),
-  // and a checkpoint before every jump. Built with relative pieces (see "build"):
-  // every piece starts where the last one ended. testRide = how the automated test
-  // rider (tests/ride-levels.js) rides it: from each x it aims for that speed (km/h).
-  (function () {
-    var pts = [{ x: -600, y: 0 }], cp = [];
-    var cx = -600, cy = 0;
-    function add(list) { // list = absolute points; continue from its last point
+// ---------------- LEVEL BUILDER ----------------
+// Builds a level from pieces, each starting where the last one ended (like a real
+// motocross track laid out piece by piece, with no turns). Pieces:
+//   flat(dx)            level ground          ramp(dx, dy)   straight slope (dy < 0 = up)
+//   lip(dx, dy)         slope that curves up more and more (the take-off)
+//   ease(dx, dy)        slope that eases out to flat (the end of a landing)
+//   bump(dx, dy)        smooth S-shaped change of height
+//   whoops(n, wave, h)  n small bumps in a row, `wave` px apart, `h` px high
+//   table(...)          tabletop: lip, flat top, long landing
+//   loop(R)             a loop-the-loop (Bat level)
+//   checkpoint()        a checkpoint flag at the current spot
+//   pad(w, label, bounce)  a pumpkin trampoline zone over the next w px of ground
+function LevelBuilder() {
+  var pts = [{ x: -600, y: 0 }], cp = [], zones = [], terrain = [], loops = 0;
+  var cx = -600, cy = 0;
+  var b = {
+    add: function (list) { // list = absolute points; continue from its last point
       list.forEach(function (p) { if (Math.abs(p.x - cx) > 0.01 || Math.abs(p.y - cy) > 0.01) pts.push(p); });
       var l = list[list.length - 1]; cx = l.x; cy = l.y;
+    },
+    x: function () { return cx; },
+    y: function () { return cy; },
+    flat: function (dx) { b.add([{ x: cx + dx, y: cy }]); },
+    ramp: function (dx, dy) { b.add([{ x: cx + dx, y: cy + dy }]); },
+    lip: function (dx, dy) { b.add(Shapes.kicker(cx, cy, cx + dx, cy + dy, 12)); },
+    ease: function (dx, dy) { b.add(Shapes.kicker(cx + dx, cy + dy, cx, cy, 12).reverse()); },
+    bump: function (dx, dy) { b.add(Shapes.curve(cx, cy, cx + dx, cy + dy, 14)); },
+    hills: function (len, h, wave) { var x0 = cx, y0 = cy; b.add(Shapes.hills(x0, x0 + len, y0, h, wave)); cx = x0 + len; cy = y0; },
+    whoops: function (n, wave, h) { b.hills(n * wave, h, wave); },
+    checkpoint: function () { cp.push({ x: cx, y: cy - 40 }); },
+    table: function (lipDx, lipDy, top, landDx, landDy, easeDx, easeDy) {
+      b.lip(lipDx, lipDy); b.flat(top); b.ramp(80, -lipDy * 0.17); b.ramp(landDx, landDy); b.ease(easeDx, easeDy);
+    },
+    pad: function (w, label, bounce) { // call just before the flat ground the pumpkins sit on
+      zones.push({ x: cx, y: cy - 400, w: w, h: 600, pad: true, label: label, color: "rgba(255,140,30,0.10)", physics: { bounce: bounce || 0.8 } });
+    },
+    loop: function (R) { // ride in at the bottom, round the circle, out the other side
+      b.flat(R * 0.6); // room before the loop (the loop is bigger than a rider's run-up needs)
+      pts.push({ x: cx, y: cy });
+      terrain.push(pts);
+      var parts = Shapes.loop(cx, cy, R, ++loops);
+      parts.forEach(function (q) { terrain.push(q); });
+      pts = [{ x: cx, y: cy }];
+    },
+    // Ends the level: run-out for braking after the finish line, then an end wall
+    build: function (o) {
+      var finishX = cx;
+      b.flat(3600);
+      b.add([{ x: cx + 200, y: cy - 600 }]);
+      terrain.push(pts);
+      return {
+        name: o.name, tip: o.tip, theme: o.theme, groundTint: o.groundTint,
+        physics: o.physics || {}, groundColor: o.groundColor || "#6b4f3a", groundTopColor: o.groundTopColor || "#a07e5e",
+        start: { x: 0, y: -40 }, checkpoints: cp, finish: { x: finishX },
+        fallLimitY: cy + 800, terrain: terrain, zones: zones, testRide: o.testRide
+      };
     }
-    function flat(dx) { add([{ x: cx + dx, y: cy }]); }
-    function ramp(dx, dy) { add([{ x: cx + dx, y: cy + dy }]); }                 // straight slope (dy < 0 = up)
-    function lip(dx, dy) { add(Shapes.kicker(cx, cy, cx + dx, cy + dy, 12)); }   // slope that curves up more and more
-    function ease(dx, dy) { add(Shapes.kicker(cx + dx, cy + dy, cx, cy, 12).reverse()); } // slope that eases out to flat
-    function bump(dx, dy) { add(Shapes.curve(cx, cy, cx + dx, cy + dy, 14)); }  // smooth S-shaped change of height
-    function checkpoint() { cp.push({ x: cx, y: cy - 40 }); }
-    function table(lipDx, lipDy, top, landDx, landDy, easeDx, easeDy) {          // tabletop: lip, flat top, long landing
-      lip(lipDx, lipDy); flat(top); ramp(80, -lipDy * 0.17); ramp(landDx, landDy); ease(easeDx, easeDy);
-    }
-    flat(1300);                                   // flat start: lean forward first, then open the throttle
-    add(Shapes.hills(700, 2300, 0, 29, 800));     // gentle rollers
-    cx = 2300; cy = 0;
-    flat(200);
-    table(560, -58, 600, 2200, 550, 900, 100);    // tabletop 1 (0.9 m): lands on a 14 deg downhill
-    flat(300); checkpoint(); flat(300);
-    bump(1400, -180); flat(300); bump(1400, 180); // short hill
-    flat(200); checkpoint();
-    var hx = cx, hy = cy;                          // rollers (0.4 m)
-    add(Shapes.hills(hx, hx + 1600, hy, 26, 800)); cx = hx + 1600; cy = hy;
-    flat(200); bump(1000, 160);                   // easy downhill
-    bump(1300, -160); flat(300); checkpoint(); flat(300);   // gentle climb
-    table(540, -77, 640, 2800, 700, 1000, 125);   // tabletop 2 (1.2 m)
-    flat(300); checkpoint(); flat(500);
-    lip(660, -96); ramp(120, 50); flat(106); ramp(107, -45); // small double: 1.5 m lip, 5 m gap
-    ramp(80, 10); ramp(2400, 600); ease(1000, 100);           // long 14 deg landing
-    flat(400);
-    var finishX = cx;
-    flat(3600);                                    // run-out: room to brake after the finish line (56 m)
-    add([{ x: cx + 200, y: cy - 600 }]);            // end wall
-    return {
-      name: "Level 1",
+  };
+  return b;
+}
+
+// ---------------- THE LEVELS, in play order ----------------
+var LEVELS = [
+  // ---------------- LEVEL 1: SKULL HOLLOW (tutorial, normal physics) ----------------
+  // About 420 m, 35-45 s. Rolling hills, two tabletops, a short hill, rollers and a
+  // small double, all with long, forgiving downhill landings (good up to ~85 km/h),
+  // and a checkpoint before every jump.
+  // testRide = how the automated test rider (tests/ride-levels.js) rides it: from each
+  // x it aims for that speed (km/h).
+  (function () {
+    var L = LevelBuilder();
+    L.flat(1300);                                   // flat start: lean forward first, then open the throttle
+    L.hills(1600, 29, 800);                         // gentle rollers
+    L.flat(200);
+    L.table(560, -58, 600, 2200, 550, 900, 100);    // tabletop 1 (0.9 m): lands on a 14 deg downhill
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.bump(1400, -180); L.flat(300); L.bump(1400, 180); // short hill
+    L.flat(200); L.checkpoint();
+    L.hills(1600, 26, 800);                         // rollers (0.4 m)
+    L.flat(200); L.bump(1000, 160);                 // easy downhill
+    L.bump(1300, -160); L.flat(300); L.checkpoint(); L.flat(300);   // gentle climb
+    L.table(540, -77, 640, 2800, 700, 1000, 125);   // tabletop 2 (1.2 m)
+    L.flat(300); L.checkpoint(); L.flat(500);
+    L.lip(660, -96); L.ramp(120, 50); L.flat(106); L.ramp(107, -45); // small double: 1.5 m lip, 5 m gap
+    L.ramp(80, 10); L.ramp(2400, 600); L.ease(1000, 100);           // long 14 deg landing
+    L.flat(400);
+    return L.build({
+      name: "Level 1 - Skull Hollow",
       tip: "Tip: hold RIGHT (lean forward) for a moment BEFORE you press UP, or the bike flips back",
-      physics: {},
-      groundColor: "#6b4f3a",
-      groundTopColor: "#a07e5e",
-      start: { x: 0, y: -40 },
-      checkpoints: cp,
-      finish: { x: finishX },
-      fallLimitY: cy + 800, // falling below this counts as a crash
-      terrain: [pts],
-      zones: [],
+      theme: {
+        kind: "skull", sky: ["#0b0a1a", "#2a1a3a", "#4a2a4a"], stars: 0.7,
+        body: { kind: "moon", x: 0.78, y: 0.2, r: 46, color: "#e8e4c8", glow: "rgba(255,250,200,0.25)" },
+        hills: [[0.12, "#241a33", 0.62, 90], [0.25, "#1a1226", 0.74, 70]],
+        propColor: "#cfc9b0", propColor2: "#3a2a2a", density: 0.6
+      },
       testRide: [{ x: -1e9, kmh: 45 }, { x: 7000, kmh: 50 }, { x: 14000, kmh: 45 }, { x: 18000, kmh: 50 }]
-    };
+    });
+  })(),
+
+  // ---------------- LEVEL 2: PUMPKIN PATCH (bouncy pumpkin trampolines) ----------------
+  // Whoops, a tabletop, then pumpkin trampolines: land on a patch and you are thrown
+  // back up (BOING). Ride the bounces level and carry your speed over to the next jump.
+  (function () {
+    var L = LevelBuilder();
+    L.flat(1300);
+    L.whoops(8, 240, 18); L.flat(300); L.checkpoint(); L.flat(300);          // whoops: 3.75 m apart
+    L.table(600, -62, 640, 2300, 560, 900, 100);                               // tabletop (1 m)
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.lip(620, -80);                                                           // jump 1 (1.25 m) onto the first patch
+    L.ramp(160, 40); L.flat(120);
+    L.pad(2200, "PUMPKIN PATCH", 0.8); L.flat(2200);                           // trampoline patch
+    L.flat(200); L.checkpoint(); L.flat(300);
+    L.hills(1600, 22, 800);                                                    // rollers
+    L.flat(300);
+    L.lip(560, -70); L.ramp(100, 30); L.flat(100); L.ramp(110, -40);          // double (1.1 m lip)
+    L.ramp(80, 10); L.ramp(1600, 380); L.ease(800, 80);                        // landing downhill
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.lip(620, -90);                                                           // jump 2 onto the second patch
+    L.ramp(160, 60); L.flat(120);
+    L.pad(2400, "BIG BOUNCE", 0.85); L.flat(2400);
+    L.flat(300);
+    L.table(560, -70, 640, 2400, 600, 900, 100);                               // last tabletop
+    L.flat(400);
+    return L.build({
+      name: "Level 2 - Pumpkin Patch",
+      tip: "Tip: pumpkins are trampolines. Land level and keep the throttle gentle",
+      groundColor: "#5a3a22", groundTopColor: "#b86a1c", groundTint: "rgba(120,50,0,0.25)",
+      theme: {
+        kind: "pumpkin", sky: ["#1a0a1f", "#4a1a2a", "#a2481c"], stars: 0.3,
+        body: { kind: "blood", x: 0.75, y: 0.22, r: 58, color: "#ff9a3a", glow: "rgba(255,150,50,0.3)" },
+        hills: [[0.12, "#3a1a28", 0.64, 90], [0.25, "#2a1220", 0.76, 70]],
+        propColor: "#ff8a1f", propColor2: "#2d4a1f", density: 0.55
+      },
+      testRide: [{ x: -1e9, kmh: 45 }]
+    });
+  })(),
+
+  // ---------------- LEVEL 3: MOON CRATER (low gravity) ----------------
+  // Gravity is 40%: everything is floaty. Jumps carry about 2.5 times as far, so the
+  // take-offs are small and the landings are very long. Nothing works at flat-out speed.
+  (function () {
+    var L = LevelBuilder();
+    L.flat(1300);
+    L.whoops(6, 360, 40); L.flat(400); L.checkpoint(); L.flat(300);             // lunar whoops: big, slow bumps
+    L.table(600, -50, 900, 3600, 700, 1400, 130);                                // low tabletop, very long landing
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.hills(2400, 40, 1200);                                                     // crater rollers
+    L.flat(300);
+    L.lip(620, -60); L.ramp(200, 90); L.flat(360); L.ramp(240, -70);            // double (long gap in low gravity)
+    L.ramp(80, 10); L.ramp(3600, 700); L.ease(1400, 130);
+    L.flat(300); L.checkpoint(); L.flat(400);
+    L.lip(560, -50); L.ramp(100, 40); L.flat(240); L.ramp(200, -50);            // second double
+    L.ramp(80, 10); L.ramp(3800, 800); L.ease(1400, 140);
+    L.flat(400);
+    return L.build({
+      name: "Level 3 - Moon Crater",
+      tip: "Tip: low gravity. Jumps fly far, so take off slow and land level",
+      physics: { gravityScale: 0.4 },
+      groundColor: "#4a4a58", groundTopColor: "#b8b8c8", groundTint: "rgba(140,140,170,0.25)",
+      theme: {
+        kind: "moon", sky: ["#02030a", "#080d22", "#1a2040"], stars: 1,
+        body: { kind: "earth", x: 0.78, y: 0.22, r: 54, color: "#2a5aa0", glow: "rgba(120,170,255,0.3)" },
+        hills: [[0.1, "#262a3e", 0.68, 80], [0.22, "#1a1d2e", 0.78, 60]],
+        propColor: "#8a8aa0", propColor2: "#5a5a70", density: 0.45
+      },
+      testRide: [{ x: -1e9, kmh: 45 }]
+    });
+  })(),
+
+  // ---------------- LEVEL 4: BAT CAVE (loop-the-loops) ----------------
+  // The hardest one: the cave has loop-the-loops. You need speed to get over the top
+  // (about 60 km/h or more); too slow and you fall off the wall. In between: a
+  // rhythm section and a tabletop.
+  (function () {
+    var L = LevelBuilder();
+    L.flat(1300);
+    L.whoops(6, 240, 18); L.flat(300); L.checkpoint(); L.flat(300);
+    L.table(600, -66, 640, 2400, 600, 900, 100);
+    L.flat(300); L.checkpoint(); L.flat(400);
+    L.loop(320); L.flat(400);                                                   // loop 1
+    L.flat(200); L.checkpoint(); L.flat(300);
+    L.lip(600, -80); L.ramp(120, 50); L.flat(110); L.ramp(110, -45);           // double
+    L.ramp(80, 10); L.ramp(1800, 420); L.ease(900, 90);
+    L.flat(400); L.checkpoint(); L.flat(300);
+    L.loop(320); L.flat(400);                                                   // loop 2
+    L.flat(300);
+    L.table(580, -76, 640, 2600, 640, 900, 110);
+    L.flat(400);
+    return L.build({
+      name: "Level 4 - Bat Cave",
+      tip: "Tip: loops need speed. Hold the throttle through the whole loop",
+      groundColor: "#2a2433", groundTopColor: "#6a5a80", groundTint: "rgba(60,40,90,0.3)",
+      theme: {
+        kind: "bat", sky: ["#05030c", "#150a24", "#2a1238"], stars: 0.2,
+        hills: [[0.12, "#1c1230", 0.66, 90], [0.25, "#120a22", 0.78, 70]],
+        propColor: "#3a2a50", propColor2: "#7a5aa0", density: 0.5
+      },
+      testRide: [{ x: -1e9, kmh: 50 }]
+    });
   })()
 ];

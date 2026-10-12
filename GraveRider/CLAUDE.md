@@ -12,7 +12,7 @@ The finished game has 4 levels, played in this order:
 | 1 | Skull   | Normal physics. Tutorial level.                        |
 | 2 | Pumpkin | Bouncy pumpkins work as trampolines.                   |
 | 3 | Moon    | Low gravity.                                           |
-| 4 | Bat     | Gravity-flip zones: you ride on the ceiling.           |
+| 4 | Bat     | Loop-the-loops (changed from gravity flips: a 2D roll leaves the bike facing backward). |
 
 ## Current direction (owner requests, 2026-10-08 and 2026-10-09) — "for now"
 - The bike is modelled on the published specs of a real electric MX bike (Stark VARG
@@ -20,9 +20,11 @@ The finished game has 4 levels, played in this order:
   its source. The brand name and its photos are NOT used in the game (trademark/copyright).
 - Physics: as close to real life as possible. Throttle help defaults to 0 (real
   life), a little flip assist (in the air only), both adjustable in the T panel.
-- Look: "completely normal theme for now" — neutral, daytime, no Halloween theme,
-  no low gravity. The themed level ideas below are on hold; ask the owner before
-  adding themes or special physics back.
+- Look: themed levels are ON (owner request 2026-10-12, overrides the earlier "normal
+  theme for now"). Each level has a `theme` (sky, moon, hills, props; see `js/themes.js`).
+  Levels are real motocross layouts without turns: whoops, tabletops, doubles, rollers.
+- Assists: throttle assist and brake assist are on by default (front wheel stays down).
+  Levels must not be best at hold-the-throttle: `tests/ride-levels.js` checks it.
 
 ## HARD SCOPE LIMIT (locked 2026-10-09)
 The game is: **4 levels and a time trial.** Nothing else:
@@ -55,19 +57,20 @@ loops out. In the air, throttle lifts the nose and brake drops it.
 
 ## How the code is organized
 Plain `<script>` files (no ES modules) so the game works from `file://`.
-Load order in `index.html` matters: planck → config → levels → bike → game.
+Load order in `index.html` matters: planck → config → levels → bike → themes → game.
 
 | File | What it does |
 |------|--------------|
 | `index.html` | The page: canvas, tuning panel HTML/CSS, script tags. |
 | `lib/planck.min.js` | Planck.js 1.5.0 physics engine (MIT license; a JavaScript port of Box2D). Official npm build. |
 | `js/config.js` | `CONFIG`: every physics number in real units (m, kg, s, N, N·m, W), each tagged [SPEC], [MEASURED] or [ESTIMATE]. `CONFIG_DEFAULTS` is a copy used by the panel's Reset button. `ART`: the picture file for each part. |
-| `js/levels.js` | `Shapes` helpers (line, hills, curve, kicker, join) and the `LEVELS` array. |
+| `js/levels.js` | `Shapes` helpers (line, hills, curve, kicker, loop, join), `LevelBuilder` (relative pieces: flat/ramp/lip/ease/bump/whoops/table/pad/loop/checkpoint) and the `LEVELS` array (4 levels; `TEST_TRACK` is tests only). |
+| `js/themes.js` | `Themes`: level looks (background sky/moon/hills, props, pumpkin drawing) for the skull, pumpkin, moon and bat themes. |
 | `js/bike.js` | `Bike`: builds the bike (chassis, 2 wheels on wheel joints, rider body on a hip joint), controls (motor, traction control, throttle help, brakes, reverse, lean, flip assist), suspension (springs, bottoming cushion, anti-squat), crash let-go, ground contact + drive force, drawing from a "pose" (so the ghost uses the same drawing). |
 | `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain (Planck chain shapes), physics zones, race flow (ready → playing → crashed/finished), flips, ride stats, checkpoint splits, `Records` (best times in localStorage, wrapped in try/catch), ghost recording/playback, camera, input, drawing, HUD, finish screen. Also `Tuning` (the T panel: sliders, Copy settings, Reset, Clear best times). |
 | `art/` | `bike.svg`, `wheel.svg` (front), `rear-wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
-| `tests/run-tests.js` | Automated Playwright tests (63 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
-| `tests/ride-levels.js` | Rides every level in `js/levels.js` with a test rider at 0.9 / 1.0 / 1.1 × its `testRide` speeds. Rules: finishes, 0 crashes, never stuck, landings under 9 g, 50 m run-out. Run: `node tests/ride-levels.js` (or `node tests/ride-levels.js 1`). Run it after changing any level or the physics. |
+| `tests/run-tests.js` | Automated Playwright tests (66 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
+| `tests/ride-levels.js` | Rides every level in `js/levels.js` with a test rider at 0.9 / 1.0 / 1.1 × its `testRide` speeds. Rules: finishes, 0 crashes, never stuck, landings under 9 g (loops and pumpkin pads excluded), 50 m run-out, and a hold-the-throttle rider must crash or be 5% slower. Run: `node tests/ride-levels.js` (or `node tests/ride-levels.js 1`). Run it after changing any level or the physics. |
 | `tests/physics-report.js` | Runs physics experiments (sag, drops, acceleration, braking, hill climbs, reversing, leaning, throttle/brake in the air) and writes `PHYSICS_REPORT.md`. Re-run after changing `config.js`. |
 
 ### Level data format (`js/levels.js`)
@@ -204,20 +207,18 @@ best time and checkpoint splits; ghost of your best run; finish screen with ride
 stats; rider legs that soak up landings (too-hard landings crash); camera; tuning
 panel; swappable art; physics report; 63/63 automated tests.
 
-Known things to handle in Week 2 (Level 1 done, 2-4 to go):
-- Build the 4 levels with the "normal theme for now" look (ask before adding themes).
-- Levels for real riding: give the rider room to lean forward before throttling,
-  build flip jumps as freestyle ramps (steep ~43° lip, landing ramp ~15 m away, long
-  landing; ~32 mph take-off), never land big jumps onto flat ground, and
-  watch hill faces over ~35° (a standstill climb fails at 40° on 0.85 grip).
-- Bat level (if it stays): gravity pointing up — check crash detection, throttle
-  help (uses the slope under the rear tyre), flip counting and camera framing.
-- Level 1 (tutorial) is done: ~410 m, 30-40 s for the test rider, two tabletops, a short hill,
-  rollers and a small double, 4 checkpoints, landings good to ~85 km/h, a start tip. It is built
-  with relative pieces (`flat/ramp/lip/ease/bump/table`) in `js/levels.js`. A rider who never
-  lifts the throttle reaches 120+ km/h on the long downhills and may crash at jumps (real life).
-  After a crash the rider restarts already leaning forward (so holding gas + lean works).
-- Build levels 2-4 the same way (design -> `node tests/ride-levels.js` -> look at screenshots ->
-  try player styles: never lifts gas / lifts above 70 km/h / cautious 35 km/h). The Test Track
-  (`TEST_TRACK`) is only for the automated tests, not part of the game.
+Week 2 status: all 4 levels are built and pass `node tests/ride-levels.js` and
+`node tests/run-tests.js` (66/66).
+- Level 1 Skull Hollow (normal, tutorial), Level 2 Pumpkin Patch (bounce pads: zones with
+  `pad: true`, explicit bounce in `padBounce` in game.js), Level 3 Moon Crater (`gravityScale`
+  0.4, very long landings), Level 4 Bat Cave (two loop-the-loops from `Shapes.loop`; the entry arc
+  switches off once you are over the top, the exit arc only turns on then; hard-landing g is
+  ignored inside a loop; loop radius 320 px works, 250 does not).
+- Contacts switched off in pre-solve are ignored by the bike's ground checks (`ct.isEnabled()`).
+- Level design rules that worked: relative pieces; long downhill landings; pads need long flat
+  zones (2200 px) so the bounce chain ends inside the pad; 50 m run-out; checkpoint before jumps.
+- Bike/realism values (tyre curve, power fade, regen, linkage) are estimates; research was cut off.
+- Still to do: independent review of the assist/theme/loop code, touch controls, final art and
+  sound (Week 3), GitHub Pages and a video (Week 4). Bikes, mods, shop = version 2.
+- The Test Track (`TEST_TRACK`) is only for the automated tests, not part of the game.
 - Final art (Week 3): replace the files in `art/` following `art/README.md`.

@@ -841,6 +841,53 @@ function installHelpers() {
   check("Rear suspension gets stiffer deeper in the stroke", real.rearForceAt[2] / real.rearForceAt[0] > 3.5 && real.rearForceAt[1] / real.rearForceAt[0] > 2,
     "wheel force " + real.rearForceAt.map(f => Math.round(f) + " N").join(" → ") + " at 105/200/300 mm");
 
+  // 19. Themed-level mechanics: loop-the-loop, pumpkin pad, moon gravity
+  const themed = await page.evaluate(() => {
+    const G = Game, s = G.state; s.paused = true; const out = {};
+    const base = { physics: {}, groundColor: "#333", groundTopColor: "#666", start: { x: 0, y: -40 }, checkpoints: [], finish: { x: 100000 }, fallLimitY: 3000 };
+    function run(level, steps, drive) {
+      LEVELS.push(Object.assign({ name: "t" }, base, level)); G.loadLevel(LEVELS.length - 1);
+      Object.assign(G.input, T.none);
+      const r = drive(steps); LEVELS.pop(); return r;
+    }
+    // loop: a 70 km/h run at full throttle goes round and out the far side without crashing
+    out.loop = run({ terrain: [[{ x: -600, y: 0 }, { x: 2200, y: 0 }]].concat(Shapes.loop(2200, 0, 320, 1), [[{ x: 2200, y: 0 }, { x: 9000, y: 0 }]]), zones: [] }, 60 * 20, (n) => {
+      let maxX = 0;
+      for (let i = 0; i < n; i++) {
+        const kmh = Math.hypot(G.bikeVel().x, G.bikeVel().y) / 64 * 3.6, x = G.bikePos().x;
+        Object.assign(G.input, T.none, { gas: (x > 1900 && x < 2900) || kmh < 70, leanForward: true });
+        G.step(); maxX = Math.max(maxX, x);
+        if (x > 3400) break; // out the far side
+      }
+      return { mode: s.mode, crashes: s.crashes, maxX };
+    });
+    // pad: dropping onto a pumpkin pad throws the bike back up
+    out.pad = run({ terrain: [[{ x: -600, y: 0 }, { x: 4000, y: 0 }]], zones: [{ x: -600, y: -2000, w: 5000, h: 2400, pad: true, physics: { bounce: 0.8 } }] }, 0, () => {
+      G.setBikeState && G.setBikeState({ x: 400, y: -500 });
+      const b = s.bike; let topAfterBounce = 0, landed = false;
+      [b.chassis, b.rider, b.rear.wheel, b.front.wheel].forEach(bd => bd.setPosition(planck.Vec2(bd.getPosition().x, bd.getPosition().y - 5)));
+      for (let i = 0; i < 60 * 4; i++) {
+        G.step();
+        if (b.rearOnGround || b.frontOnGround) landed = true;
+        if (landed) topAfterBounce = Math.min(topAfterBounce, b.chassis.getLinearVelocity().y);
+      }
+      return { landed, upSpeed: -topAfterBounce };
+    });
+    // moon: gravity scale 0.4 gives 0.4 x the fall acceleration
+    out.moon = run({ physics: { gravityScale: 0.4 }, terrain: [[{ x: -600, y: 0 }, { x: 4000, y: 0 }]], zones: [] }, 0, () => {
+      for (let i = 0; i < 3; i++) G.step();
+      return { g: s.gravity, expect: 9.81 * CONFIG.gravity * 0.4 };
+    });
+    s.paused = false; G.loadLevel(0);
+    return out;
+  });
+  check("A loop-the-loop can be ridden at full throttle without a crash", themed.loop.crashes === 0 && themed.loop.maxX > 3000,
+    themed.loop.mode + ", crashes " + themed.loop.crashes + ", got to x " + Math.round(themed.loop.maxX));
+  check("Landing on a pumpkin pad throws the bike back up (bounce)", themed.pad.landed && themed.pad.upSpeed > 2,
+    "bounced up at " + themed.pad.upSpeed.toFixed(1) + " m/s");
+  check("Moon level gravity is 40% of normal", Math.abs(themed.moon.g - themed.moon.expect) < 0.01,
+    themed.moon.g.toFixed(2) + " m/s² (expected " + themed.moon.expect.toFixed(2) + ")");
+
   check("No console errors during all tests", errors.length === 0, errors.join(" | "));
   await browser.close();
 

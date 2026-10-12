@@ -75,7 +75,7 @@ const scales = [0.9, 1, 1.1];
     function targetAt(x) { let k = plan[0].kmh; plan.forEach(p => { if (p.x <= x) k = p.kmh; }); return k; }
     function flipFrom(x) { let f = null; plan.forEach(p => { if (p.flip && p.x <= x && x < p.x + 900) f = p.x; }); return f; }
 
-    function ride(scale) {
+    function ride(scale, hold) {
       Object.assign(G.input, none);
       G.clearBest();
       G.loadLevel(idx);
@@ -90,7 +90,9 @@ const scales = [0.9, 1, 1.1];
         const target = targetAt(px) * scale;
         const inp = Object.assign({}, none);
         if (s.mode === "playing" || s.mode === "ready") {
-          if (ground) {
+          if (s.inLoop) { // inside a loop-the-loop: full throttle, stay neutral
+            inp.gas = true;
+          } else if (ground) {
             if (flipping) { flipping = false; }
             const e = a - b.groundAngle + 0.25 * w; // nose up vs the slope = negative
             inp.leanForward = e < -0.03 || kmh < 15;
@@ -98,6 +100,7 @@ const scales = [0.9, 1, 1.1];
             if (kmh > target + 6) inp.brake = true;
             if (e < -0.5 && !b.frontOnGround) inp.brake = true;
             if (e > 0.35) { inp.leanBack = true; inp.leanForward = false; }
+            if (hold) { inp.gas = i > 36 || s.mode === "playing"; inp.brake = false; } // never lifts, never brakes
             if (s.mode === "ready") { inp.leanForward = true; if (i > 36) inp.gas = true; }
           } else {
             const fx = flipFrom(px);
@@ -114,12 +117,13 @@ const scales = [0.9, 1, 1.1];
               const e = a - aim + 0.6 * w;
               if (e < -0.08) inp.leanForward = true;
               if (e > 0.08) inp.leanBack = true;
+              if (hold) inp.gas = true;
             }
           }
         }
         Object.assign(G.input, inp);
         G.step();
-        if (s.mode === "playing") maxG = Math.max(maxG, s.bike.riderG || 0);
+        if (s.mode === "playing" && !s.inLoop && !(s.zone && s.zone.pad)) maxG = Math.max(maxG, s.bike.riderG || 0);
         if (s.crashes > prevCrashes) { crashXs.push(Math.round(px)); prevCrashes = s.crashes; }
         if (px > lastProgressX + PPM) { lastProgressX = px; lastProgressStep = i; }
         if (i - lastProgressStep > 60 * 15) { stuck = true; log.push("stuck at x " + Math.round(px)); break; }
@@ -129,9 +133,10 @@ const scales = [0.9, 1, 1.1];
         crashes: s.crashes, crashXs, flips: s.backflips + s.frontflips, maxRiderG: +maxG.toFixed(1),
         topKmh: +(s.stats.topSpeed * 3.6).toFixed(0), longestJumpM: +s.stats.longestJump.toFixed(1), airS: +(s.stats.airMs / 1000).toFixed(1), stuck, log };
     }
-    const rides = scales.map(ride);
+    const rides = scales.map(sc => ride(sc, false));
+    const holdRide = ride(1, true); // the "just hold the throttle" rider
     s.paused = false;
-    return { name: L.name, checks, rides };
+    return { name: L.name, checks, rides, holdRide };
   }, [scales, index]);
   report.errors = errors.slice();
   // ---- judge ----
@@ -143,9 +148,14 @@ const scales = [0.9, 1, 1.1];
     if (r.stuck) problems.push("speed x" + r.scale + ": got stuck");
     if (r.maxRiderG >= 9) problems.push("speed x" + r.scale + ": landing " + r.maxRiderG + " g (limit 9)");
   });
+  // Holding the throttle all the time must not be the best way to ride
+  const h = report.holdRide, smart = report.rides[1];
+  if (h.mode === "finished" && h.crashes === 0 && h.timeS < smart.timeS * 1.05)
+    problems.push("holding the throttle is best: " + h.timeS + " s vs " + smart.timeS + " s (needs a crash or 5% slower)");
   if (errors.length) problems.push("console errors: " + errors.join(" | "));
   console.log((problems.length ? "FAIL " : "PASS ") + "Level " + (index + 1) + " (" + report.name + ")  " + report.checks.lengthM + " m, " +
-    report.rides.map(r => "x" + r.scale + ": " + r.timeS + " s, peak " + r.maxRiderG + " g").join("; "));
+    report.rides.map(r => "x" + r.scale + ": " + r.timeS + " s, peak " + r.maxRiderG + " g").join("; ") +
+    "; hold-throttle: " + h.mode + " " + h.timeS + " s, " + h.crashes + " crash(es)");
   problems.forEach(x => console.log("     - " + x));
   if (problems.length) failed++;
   }
