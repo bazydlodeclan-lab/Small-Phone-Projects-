@@ -3,7 +3,7 @@
 // and checks the level rules. Run from the GraveRider folder:
 //   node tests/ride-levels.js            (all levels, speeds 0.9 / 1.0 / 1.1)
 //   node tests/ride-levels.js 1          (just level 1)
-// Rules: every ride finishes with 0 crashes, never stuck, peak landing < 9 g,
+// Rules: every ride finishes with 0 crashes, never stuck, a hold-the-throttle rider crashes or is slower,
 // at least 50 m of run-out after the finish.
 //
 // testRide in each level: [{ x, kmh, flip }] - from each x onward the rider aims for
@@ -36,6 +36,7 @@ const scales = [0.9, 1, 1.1];
     function groundY(x) { // top-most ground surface at x (null = hole)
       let best = null;
       L.terrain.forEach(piece => {
+        if (piece.solidAbove) return; // beams and ceilings are not ground
         const pts = piece.points || piece;
         for (let i = 0; i < pts.length - 1; i++) {
           const a = pts[i], b = pts[i + 1];
@@ -72,7 +73,7 @@ const scales = [0.9, 1, 1.1];
 
     // ---- bot ride ----
     const plan = (L.testRide || [{ x: -1e9, kmh: 40 }]).slice().sort((a, b) => a.x - b.x);
-    function targetAt(x) { let k = plan[0].kmh; plan.forEach(p => { if (p.x <= x) k = p.kmh; }); return k; }
+    function targetAt(x, scale) { let k = plan[0].kmh * scale; plan.forEach(p => { if (p.x <= x) k = p.kmh * (p.fixed ? 1 : scale); }); return k; }
     function flipFrom(x) { let f = null; plan.forEach(p => { if (p.flip && p.x <= x && x < p.x + 900) f = p.x; }); return f; }
 
     function ride(scale, hold) {
@@ -87,7 +88,7 @@ const scales = [0.9, 1, 1.1];
         const a = Math.atan2(Math.sin(raw), Math.cos(raw));
         const ground = b.rearOnGround || b.frontOnGround || b.bodyOnGround;
         const px = G.bikePos().x, vel = G.bikeVel(), kmh = Math.hypot(vel.x, vel.y) / PPM * 3.6;
-        const target = targetAt(px) * scale;
+        const target = targetAt(px, scale);
         const inp = Object.assign({}, none);
         if (s.mode === "playing" || s.mode === "ready") {
           if (s.inLoop) { // inside a loop-the-loop: full throttle, stay neutral
@@ -146,7 +147,6 @@ const scales = [0.9, 1, 1.1];
     if (r.mode !== "finished") problems.push("speed x" + r.scale + ": did not finish (" + r.mode + ")");
     if (r.crashes) problems.push("speed x" + r.scale + ": " + r.crashes + " crash(es) at x " + r.crashXs.join(", "));
     if (r.stuck) problems.push("speed x" + r.scale + ": got stuck");
-    if (r.maxRiderG >= 9) problems.push("speed x" + r.scale + ": landing " + r.maxRiderG + " g (limit 9)");
   });
   // Holding the throttle all the time must not be the best way to ride
   const h = report.holdRide, smart = report.rides[1];
@@ -154,8 +154,8 @@ const scales = [0.9, 1, 1.1];
     problems.push("holding the throttle is best: " + h.timeS + " s vs " + smart.timeS + " s (needs a crash or 5% slower)");
   if (errors.length) problems.push("console errors: " + errors.join(" | "));
   console.log((problems.length ? "FAIL " : "PASS ") + "Level " + (index + 1) + " (" + report.name + ")  " + report.checks.lengthM + " m, " +
-    report.rides.map(r => "x" + r.scale + ": " + r.timeS + " s, peak " + r.maxRiderG + " g").join("; ") +
-    "; hold-throttle: " + h.mode + " " + h.timeS + " s, " + h.crashes + " crash(es)");
+    report.rides.map(r => "x" + r.scale + ": " + r.timeS + " s, " + r.flips + " flip" + (r.flips === 1 ? "" : "s") + ", peak " + r.maxRiderG + " g").join("; ") +
+    "; hold-throttle: " + h.mode + " " + h.timeS + " s, " + h.crashes + " crash(es) at x " + h.crashXs.join(", "));
   problems.forEach(x => console.log("     - " + x));
   if (problems.length) failed++;
   }

@@ -25,6 +25,12 @@ The finished game has 4 levels, played in this order:
   Levels are real motocross layouts without turns: whoops, tabletops, doubles, rollers.
 - Assists: throttle assist and brake assist are on by default (front wheel stays down).
   Levels must not be best at hold-the-throttle: `tests/ride-levels.js` checks it.
+- Owner request 2026-10-12 (round 2): a hard landing NEVER throws the rider off any more
+  (`CONFIG.hardLandingCrash = false`; head/torso touching the ground and falling out of the
+  level still crash). Levels are about 2x longer (700-900 m, 50-80 s) with whoops, rhythm
+  sections, tabletops, doubles, hills and ONE freestyle ramp each (a backflip is possible).
+  The camera is zoomed out (900 px of height on screen) and looks lower when the bike is high,
+  so the ground stays in view.
 
 ## HARD SCOPE LIMIT (locked 2026-10-09)
 The game is: **4 levels and a time trial.** Nothing else:
@@ -64,13 +70,13 @@ Load order in `index.html` matters: planck → config → levels → bike → th
 | `index.html` | The page: canvas, tuning panel HTML/CSS, script tags. |
 | `lib/planck.min.js` | Planck.js 1.5.0 physics engine (MIT license; a JavaScript port of Box2D). Official npm build. |
 | `js/config.js` | `CONFIG`: every physics number in real units (m, kg, s, N, N·m, W), each tagged [SPEC], [MEASURED] or [ESTIMATE]. `CONFIG_DEFAULTS` is a copy used by the panel's Reset button. `ART`: the picture file for each part. |
-| `js/levels.js` | `Shapes` helpers (line, hills, curve, kicker, loop, join), `LevelBuilder` (relative pieces: flat/ramp/lip/ease/bump/whoops/table/pad/loop/checkpoint) and the `LEVELS` array (4 levels; `TEST_TRACK` is tests only). |
+| `js/levels.js` | `Shapes` helpers (line, hills, curve, kicker, loop, join), `LevelBuilder` (relative pieces: flat/ramp/lip/ease/bump/hills/whoops/table/pad/loop/freestyle/arch/checkpoint/speed) and the `LEVELS` array (4 levels; `TEST_TRACK` is tests only). |
 | `js/themes.js` | `Themes`: level looks (background sky/moon/hills, props, pumpkin drawing) for the skull, pumpkin, moon and bat themes. |
 | `js/bike.js` | `Bike`: builds the bike (chassis, 2 wheels on wheel joints, rider body on a hip joint), controls (motor, traction control, throttle help, brakes, reverse, lean, flip assist), suspension (springs, bottoming cushion, anti-squat), crash let-go, ground contact + drive force, drawing from a "pose" (so the ghost uses the same drawing). |
 | `js/game.js` | `Game`: fixed-timestep loop (60 Hz), level loading, terrain (Planck chain shapes), physics zones, race flow (ready → playing → crashed/finished), flips, ride stats, checkpoint splits, `Records` (best times in localStorage, wrapped in try/catch), ghost recording/playback, camera, input, drawing, HUD, finish screen. Also `Tuning` (the T panel: sliders, Copy settings, Reset, Clear best times). |
 | `art/` | `bike.svg`, `wheel.svg` (front), `rear-wheel.svg`, `rider.svg`, `dirt.svg` + `art/README.md` with exact sizes and guide points for replacing them. |
-| `tests/run-tests.js` | Automated Playwright tests (66 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
-| `tests/ride-levels.js` | Rides every level in `js/levels.js` with a test rider at 0.9 / 1.0 / 1.1 × its `testRide` speeds. Rules: finishes, 0 crashes, never stuck, landings under 9 g (loops and pumpkin pads excluded), 50 m run-out, and a hold-the-throttle rider must crash or be 5% slower. Run: `node tests/ride-levels.js` (or `node tests/ride-levels.js 1`). Run it after changing any level or the physics. |
+| `tests/run-tests.js` | Automated Playwright tests (67 checks) with screenshots in `tests/screenshots/` (git-ignored). Run: `node tests/run-tests.js` from this folder. |
+| `tests/ride-levels.js` | Rides every level in `js/levels.js` with a test rider at 0.9 / 1.0 / 1.1 × its `testRide` speeds. Rules: finishes, 0 crashes, never stuck, 50 m run-out, and a hold-the-throttle rider must crash or be 5% slower. It also prints flips and peak landing g (hard landings no longer crash). Run: `node tests/ride-levels.js` (or `node tests/ride-levels.js 1`). Run it after changing any level or the physics. |
 | `tests/physics-report.js` | Runs physics experiments (sag, drops, acceleration, braking, hill climbs, reversing, leaning, throttle/brake in the air) and writes `PHYSICS_REPORT.md`. Re-run after changing `config.js`. |
 
 ### Level data format (`js/levels.js`)
@@ -166,7 +172,7 @@ Load order in `index.html` matters: planck → config → levels → bike → th
   ramp ~15 m away and a long landing. The test track's double is too short: the
   speed a flip needs overshoots its landing onto the flat (too hard a landing). The rider leans back
   automatically when braking hard.
-- Crash = rider's head or torso touching the ground, a landing over `riderMaxG`, or
+- Crash = rider's head or torso touching the ground, a beam hit, falling below the level, or (only if `hardLandingCrash` is on, default OFF) a landing over `riderMaxG`, or
   falling below the level.
   On a crash the hip joint is destroyed so the rider falls off, and 1 s later the
   bike restarts at the last checkpoint. The clock keeps running.
@@ -208,7 +214,14 @@ stats; rider legs that soak up landings (too-hard landings crash); camera; tunin
 panel; swappable art; physics report; 63/63 automated tests.
 
 Week 2 status: all 4 levels are built and pass `node tests/ride-levels.js` and
-`node tests/run-tests.js` (66/66).
+`node tests/run-tests.js` (67/67).
+- Round 2 (2026-10-12): hard-landing crash removed, levels lengthened, `freestyle()` ramp
+  (78 km/h take-off, steep kicker, wide gap, low landing ramp, long downhill; the test rider
+  flips it at 0.9/1.0/1.1x), camera zoomed out. With no hard-landing crash, speed was always best,
+  so low `arch()` beams hang over the big jumps: a rider who jumps too high and fast hits one
+  (head touching = crash). Heights were tuned with the test riders: smart rider clears, the
+  hold-the-throttle rider hits one. On the moon traction limits acceleration, so those beams are
+  wide (3000 px) and sit lower.
 - Level 1 Skull Hollow (normal, tutorial), Level 2 Pumpkin Patch (bounce pads: zones with
   `pad: true`, explicit bounce in `padBounce` in game.js), Level 3 Moon Crater (`gravityScale`
   0.4, very long landings), Level 4 Bat Cave (two loop-the-loops from `Shapes.loop`; the entry arc

@@ -88,6 +88,8 @@ var CONFIG = {
   legDamping: 1.0,           // fraction of "no bounce" damping: muscles soak it up, no bounce [ESTIMATE]
   legCrouch: 0.14,           // m the body can drop from the attack position to a deep crouch [ESTIMATE: body-segment model]
   legStretch: 0.15,          // m it can rise with the legs straight [ESTIMATE: same model]
+  hardLandingCrash: false,   // OFF (owner request): a hard landing never throws the rider off, you just keep riding.
+                             // Turn it on to get the realistic version: over riderMaxG throws the rider off [GAME CHOICE]
   riderMaxG: 10,             // landing harder than this (g, on the rider) throws them off [ESTIMATE: a 2 m drop to
                              // flat is ~4-8 g and rideable; 5 m is ~9-17 g, beyond what a rider can hold]
 

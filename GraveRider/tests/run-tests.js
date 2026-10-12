@@ -598,13 +598,16 @@ function installHelpers() {
       return { mode: s.mode, maxG, maxCrouch };
     }
     const out = { d2: drop(2), d5: drop(5) };
+    CONFIG.hardLandingCrash = true; out.d5real = drop(5); CONFIG.hardLandingCrash = false; // the realistic (optional) rule
     LEVELS.pop(); G.loadLevel(0); s.paused = false;
     return out;
   });
   check("The rider's legs soak up a 2 m drop to flat (no crash)", drops.d2.mode === "playing" && drops.d2.maxCrouch > 0.05,
     "legs bent " + Math.round(drops.d2.maxCrouch * 1000) + " mm, " + drops.d2.maxG.toFixed(1) + " g");
-  check("Landing a 5 m drop to flat is too hard: the rider is thrown off", drops.d5.mode === "crashed",
+  check("By default a hard landing (5 m drop) does not throw the rider off", drops.d5.mode === "playing",
     drops.d5.mode + ", " + drops.d5.maxG.toFixed(1) + " g");
+  check("With the realistic hard-landing rule switched on, a 5 m drop throws the rider off", drops.d5real.mode === "crashed",
+    drops.d5real.mode + ", " + drops.d5real.maxG.toFixed(1) + " g");
 
   // 14. R restarts the level (ride a little first, so there is something to reset)
   await page.keyboard.down("ArrowRight");
@@ -772,7 +775,7 @@ function installHelpers() {
     LEVELS.push({ name: "Ceiling", physics: { gravityDir: { x: 0, y: -1 } }, groundColor: "#000", groundTopColor: "#000",
       start: { x: 0, y: -40 }, checkpoints: [], finish: { x: 1e9 }, fallLimitY: 1e9, fallLimitTopY: -1e9, zones: [],
       terrain: [[{ x: -600, y: -2000 }, { x: 20000, y: -2000 }]] });
-    G.loadLevel(LEVELS.length - 1);
+    G.loadLevel(LEVELS.length - 1); CONFIG.hardLandingCrash = true;
     G.spawnBike({ x: 0, y: -2000 + 0.66 * PPM + 5 * PPM });
     // turn the bike upside down so it falls up wheels-first
     b = s.bike; c = b.chassis.getPosition();
@@ -783,7 +786,7 @@ function installHelpers() {
     Object.assign(G.input, T.none, { brake: true }); G.step(); Object.assign(G.input, T.none);
     let peak = 0;
     for (let i = 0; i < 240 && s.mode === "playing"; i++) { G.step(); peak = Math.max(peak, s.bike.riderG); }
-    out.ceilingMode = s.mode; out.ceilingPeak = peak;
+    out.ceilingMode = s.mode; out.ceilingPeak = peak; CONFIG.hardLandingCrash = false;
     LEVELS.pop(); G.loadLevel(0); s.paused = false;
     return out;
   });

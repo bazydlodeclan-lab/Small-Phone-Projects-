@@ -169,7 +169,7 @@ var TEST_TRACK =
 //   checkpoint()        a checkpoint flag at the current spot
 //   pad(w, label, bounce)  a pumpkin trampoline zone over the next w px of ground
 function LevelBuilder() {
-  var pts = [{ x: -600, y: 0 }], cp = [], zones = [], terrain = [], loops = 0;
+  var pts = [{ x: -600, y: 0 }], cp = [], zones = [], terrain = [], loops = 0, beams = [], rides = [];
   var cx = -600, cy = 0;
   var b = {
     add: function (list) { // list = absolute points; continue from its last point
@@ -189,6 +189,36 @@ function LevelBuilder() {
     table: function (lipDx, lipDy, top, landDx, landDy, easeDx, easeDy) {
       b.lip(lipDx, lipDy); b.flat(top); b.ramp(80, -lipDy * 0.17); b.ramp(landDx, landDy); b.ease(easeDx, easeDy);
     },
+    // Freestyle ramp: a big steep kicker, a wide gap and a high landing ramp with a long
+    // downhill landing, so a rider with speed (about 67 km/h) can throw a backflip.
+    // Slower riders land on the flat in the gap and ride up the landing ramp. The ramp's
+    // marker also tells the automated test rider to go for the flip. `gap` stretches the
+    // ramp for low gravity (1 = normal).
+    freestyle: function (gap) {
+      gap = gap || 1;
+      var takeoffKmh = 78, before = rides.length ? rides[rides.length - 1].kmh : 45;
+      b.speed(takeoffKmh, false, undefined, true);
+      b.flat(1800 * gap);                 // run-up: room to get up to speed
+      var x0 = cx, y0 = cy;
+      b.speed(takeoffKmh, true, x0 - 100, true);
+      b.add(Shapes.kicker(x0, y0, x0 + 300, y0 - 140, 14));
+      b.add([{ x: x0 + 304, y: y0 - 140 }, { x: x0 + 310, y: y0 }]);
+      b.flat(1500 * gap);
+      b.add(Shapes.curve(cx, cy, cx + 320, cy - 120, 10)); // landing ramp face (about 20 deg, rideable)
+      b.flat(60);
+      b.add(Shapes.curve(cx, cy, cx + 1100 * gap + 700, cy + 120, 24)); // long downhill landing
+      b.flat(300);
+      b.speed(before);
+    },
+    // A low beam hanging over the track (spooky gate, vine bridge, rock arch...). A rider
+    // who jumps too high and fast hits it. `h` = height of its underside above the ground here.
+    arch: function (dx, w, h) {
+      beams.push({ points: [{ x: cx + dx, y: cy - h }, { x: cx + dx + w, y: cy - h }], beam: true, solidAbove: true });
+    },
+    // Where the automated test rider should aim for a speed (km/h) from here on
+    speed: function (kmh, flip, x, fixed) { // fixed: the test rider keeps this speed at 0.9x / 1.1x too
+      rides.push({ x: x === undefined ? cx : x, kmh: kmh, flip: !!flip, fixed: !!fixed });
+    },
     pad: function (w, label, bounce) { // call just before the flat ground the pumpkins sit on
       zones.push({ x: cx, y: cy - 400, w: w, h: 600, pad: true, label: label, color: "rgba(255,140,30,0.10)", physics: { bounce: bounce || 0.8 } });
     },
@@ -206,11 +236,12 @@ function LevelBuilder() {
       b.flat(3600);
       b.add([{ x: cx + 200, y: cy - 600 }]);
       terrain.push(pts);
+      beams.forEach(function (q) { terrain.push(q); });
       return {
         name: o.name, tip: o.tip, theme: o.theme, groundTint: o.groundTint,
         physics: o.physics || {}, groundColor: o.groundColor || "#6b4f3a", groundTopColor: o.groundTopColor || "#a07e5e",
         start: { x: 0, y: -40 }, checkpoints: cp, finish: { x: finishX },
-        fallLimitY: cy + 800, terrain: terrain, zones: zones, testRide: o.testRide
+        fallLimitY: cy + 800, terrain: terrain, zones: zones, testRide: o.testRide || rides
       };
     }
   };
@@ -227,11 +258,13 @@ var LEVELS = [
   // x it aims for that speed (km/h).
   (function () {
     var L = LevelBuilder();
-    L.flat(1300);                                   // flat start: lean forward first, then open the throttle
+    L.speed(45);
+    L.flat(1300);                                   // start straight: lean forward first, then open the throttle
     L.hills(1600, 29, 800);                         // gentle rollers
     L.flat(200);
     L.table(560, -58, 600, 2200, 550, 900, 100);    // tabletop 1 (0.9 m): lands on a 14 deg downhill
     L.flat(300); L.checkpoint(); L.flat(300);
+    L.whoops(8, 240, 18); L.flat(300);              // whoops
     L.bump(1400, -180); L.flat(300); L.bump(1400, 180); // short hill
     L.flat(200); L.checkpoint();
     L.hills(1600, 26, 800);                         // rollers (0.4 m)
@@ -239,8 +272,23 @@ var LEVELS = [
     L.bump(1300, -160); L.flat(300); L.checkpoint(); L.flat(300);   // gentle climb
     L.table(540, -77, 640, 2800, 700, 1000, 125);   // tabletop 2 (1.2 m)
     L.flat(300); L.checkpoint(); L.flat(500);
+    L.arch(500, 900, 360);                          // low gate over the double: too much speed and you hit it
     L.lip(660, -96); L.ramp(120, 50); L.flat(106); L.ramp(107, -45); // small double: 1.5 m lip, 5 m gap
     L.ramp(80, 10); L.ramp(2400, 600); L.ease(1000, 100);           // long 14 deg landing
+    L.flat(400); L.checkpoint(); L.flat(400);
+    for (var i = 0; i < 3; i++) {                   // rhythm section: three small doubles in a row
+      L.lip(480, -62); L.ramp(100, 30); L.flat(90); L.ramp(100, -34); L.ramp(60, 8); L.ramp(260, 64); L.ease(200, 22);
+      L.flat(160);
+    }
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.whoops(12, 240, 20); L.flat(400);              // long whoops section
+    L.bump(1600, -200); L.flat(300); L.bump(1600, 200); L.flat(300);   // hill
+    L.checkpoint(); L.flat(300);
+    L.arch(480, 960, 380);                          // second low gate
+    L.table(600, -70, 640, 2600, 640, 950, 110);    // tabletop 3 (1.1 m)
+    L.flat(400); L.checkpoint(); L.flat(400);
+    L.hills(1600, 26, 800); L.flat(300);
+    L.freestyle(1);                                 // freestyle ramp: the backflip jump
     L.flat(400);
     return L.build({
       name: "Level 1 - Skull Hollow",
@@ -251,33 +299,49 @@ var LEVELS = [
         hills: [[0.12, "#241a33", 0.62, 90], [0.25, "#1a1226", 0.74, 70]],
         propColor: "#cfc9b0", propColor2: "#3a2a2a", density: 0.6
       },
-      testRide: [{ x: -1e9, kmh: 45 }, { x: 7000, kmh: 50 }, { x: 14000, kmh: 45 }, { x: 18000, kmh: 50 }]
     });
   })(),
 
   // ---------------- LEVEL 2: PUMPKIN PATCH (bouncy pumpkin trampolines) ----------------
-  // Whoops, a tabletop, then pumpkin trampolines: land on a patch and you are thrown
-  // back up (BOING). Ride the bounces level and carry your speed over to the next jump.
+  // Whoops, tabletops, doubles, then pumpkin trampolines: land on a patch and you are
+  // thrown back up (BOING). Ride the bounces level and carry your speed to the next jump.
+  // Low gates hang over the biggest jumps, and the freestyle ramp is the finale.
   (function () {
     var L = LevelBuilder();
+    L.speed(45);
     L.flat(1300);
     L.whoops(8, 240, 18); L.flat(300); L.checkpoint(); L.flat(300);          // whoops: 3.75 m apart
     L.table(600, -62, 640, 2300, 560, 900, 100);                               // tabletop (1 m)
     L.flat(300); L.checkpoint(); L.flat(300);
+    L.arch(450, 900, 360);
     L.lip(620, -80);                                                           // jump 1 (1.25 m) onto the first patch
     L.ramp(160, 40); L.flat(120);
     L.pad(2200, "PUMPKIN PATCH", 0.8); L.flat(2200);                           // trampoline patch
     L.flat(200); L.checkpoint(); L.flat(300);
     L.hills(1600, 22, 800);                                                    // rollers
     L.flat(300);
+    L.arch(400, 900, 340);
     L.lip(560, -70); L.ramp(100, 30); L.flat(100); L.ramp(110, -40);          // double (1.1 m lip)
     L.ramp(80, 10); L.ramp(1600, 380); L.ease(800, 80);                        // landing downhill
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.whoops(10, 240, 20); L.flat(400);                                        // more whoops
+    for (var i = 0; i < 3; i++) {                                              // rhythm section: three small doubles
+      L.lip(480, -62); L.ramp(100, 30); L.flat(90); L.ramp(100, -34); L.ramp(60, 8); L.ramp(260, 64); L.ease(200, 22);
+      L.flat(160);
+    }
     L.flat(300); L.checkpoint(); L.flat(300);
     L.lip(620, -90);                                                           // jump 2 onto the second patch
     L.ramp(160, 60); L.flat(120);
     L.pad(2400, "BIG BOUNCE", 0.85); L.flat(2400);
-    L.flat(300);
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.whoops(12, 240, 20); L.flat(400);                                        // long whoops section
+    L.bump(1600, -200); L.flat(300); L.bump(1600, 200); L.flat(300);           // hill
+    L.checkpoint(); L.flat(300);
+    L.arch(450, 960, 380);
     L.table(560, -70, 640, 2400, 600, 900, 100);                               // last tabletop
+    L.flat(400); L.checkpoint(); L.flat(400);
+    L.hills(1600, 24, 800); L.flat(300);
+    L.freestyle(1);                                                            // freestyle ramp: the backflip jump
     L.flat(400);
     return L.build({
       name: "Level 2 - Pumpkin Patch",
@@ -288,27 +352,37 @@ var LEVELS = [
         body: { kind: "blood", x: 0.75, y: 0.22, r: 58, color: "#ff9a3a", glow: "rgba(255,150,50,0.3)" },
         hills: [[0.12, "#3a1a28", 0.64, 90], [0.25, "#2a1220", 0.76, 70]],
         propColor: "#ff8a1f", propColor2: "#2d4a1f", density: 0.55
-      },
-      testRide: [{ x: -1e9, kmh: 45 }]
+      }
     });
   })(),
 
   // ---------------- LEVEL 3: MOON CRATER (low gravity) ----------------
   // Gravity is 40%: everything is floaty. Jumps carry about 2.5 times as far, so the
-  // take-offs are small and the landings are very long. Nothing works at flat-out speed.
+  // take-offs are small and the landings are very long. Rock arches hang over the big jumps.
   (function () {
     var L = LevelBuilder();
+    L.speed(45);
     L.flat(1300);
     L.whoops(6, 360, 40); L.flat(400); L.checkpoint(); L.flat(300);             // lunar whoops: big, slow bumps
     L.table(600, -50, 900, 3600, 700, 1400, 130);                                // low tabletop, very long landing
     L.flat(300); L.checkpoint(); L.flat(300);
     L.hills(2400, 40, 1200);                                                     // crater rollers
     L.flat(300);
+    L.arch(400, 3000, 330);
     L.lip(620, -60); L.ramp(200, 90); L.flat(360); L.ramp(240, -70);            // double (long gap in low gravity)
     L.ramp(80, 10); L.ramp(3600, 700); L.ease(1400, 130);
     L.flat(300); L.checkpoint(); L.flat(400);
+    L.whoops(8, 360, 44); L.flat(400);
     L.lip(560, -50); L.ramp(100, 40); L.flat(240); L.ramp(200, -50);            // second double
     L.ramp(80, 10); L.ramp(3800, 800); L.ease(1400, 140);
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.hills(2400, 40, 1200); L.flat(300);
+    L.arch(450, 3000, 300);
+    L.table(600, -50, 900, 3600, 700, 1400, 130);
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.whoops(8, 360, 44); L.flat(400);
+    L.hills(2400, 40, 1200); L.flat(300);
+    L.freestyle(2.2);                                                            // freestyle ramp (long, for low gravity)
     L.flat(400);
     return L.build({
       name: "Level 3 - Moon Crater",
@@ -320,29 +394,44 @@ var LEVELS = [
         body: { kind: "earth", x: 0.78, y: 0.22, r: 54, color: "#2a5aa0", glow: "rgba(120,170,255,0.3)" },
         hills: [[0.1, "#262a3e", 0.68, 80], [0.22, "#1a1d2e", 0.78, 60]],
         propColor: "#8a8aa0", propColor2: "#5a5a70", density: 0.45
-      },
-      testRide: [{ x: -1e9, kmh: 45 }]
+      }
     });
   })(),
 
   // ---------------- LEVEL 4: BAT CAVE (loop-the-loops) ----------------
   // The hardest one: the cave has loop-the-loops. You need speed to get over the top
-  // (about 60 km/h or more); too slow and you fall off the wall. In between: a
-  // rhythm section and a tabletop.
+  // (about 60 km/h or more); too slow and you fall off the wall. In between: whoops,
+  // a rhythm section, tabletops and the freestyle ramp.
   (function () {
     var L = LevelBuilder();
+    L.speed(50);
     L.flat(1300);
     L.whoops(6, 240, 18); L.flat(300); L.checkpoint(); L.flat(300);
+    L.arch(450, 960, 360);
     L.table(600, -66, 640, 2400, 600, 900, 100);
     L.flat(300); L.checkpoint(); L.flat(400);
     L.loop(320); L.flat(400);                                                   // loop 1
     L.flat(200); L.checkpoint(); L.flat(300);
+    L.arch(400, 900, 340);
     L.lip(600, -80); L.ramp(120, 50); L.flat(110); L.ramp(110, -45);           // double
     L.ramp(80, 10); L.ramp(1800, 420); L.ease(900, 90);
     L.flat(400); L.checkpoint(); L.flat(300);
+    L.whoops(10, 240, 20); L.flat(400);
+    for (var i = 0; i < 3; i++) {                                               // rhythm section
+      L.lip(480, -62); L.ramp(100, 30); L.flat(90); L.ramp(100, -34); L.ramp(60, 8); L.ramp(260, 64); L.ease(200, 22);
+      L.flat(160);
+    }
+    L.flat(300); L.checkpoint(); L.flat(300);
     L.loop(320); L.flat(400);                                                   // loop 2
-    L.flat(300);
+    L.flat(300); L.checkpoint(); L.flat(300);
+    L.flat(1000); L.whoops(12, 240, 20); L.flat(400);
+    L.bump(1600, -200); L.flat(300); L.bump(1600, 200); L.flat(300);
+    L.checkpoint(); L.flat(300);
+    L.arch(450, 960, 380);
     L.table(580, -76, 640, 2600, 640, 900, 110);
+    L.flat(400); L.checkpoint(); L.flat(400);
+    L.hills(1600, 24, 800); L.flat(300);
+    L.freestyle(1);                                                             // freestyle ramp
     L.flat(400);
     return L.build({
       name: "Level 4 - Bat Cave",
@@ -352,8 +441,7 @@ var LEVELS = [
         kind: "bat", sky: ["#05030c", "#150a24", "#2a1238"], stars: 0.2,
         hills: [[0.12, "#1c1230", 0.66, 90], [0.25, "#120a22", 0.78, 70]],
         propColor: "#3a2a50", propColor2: "#7a5aa0", density: 0.5
-      },
-      testRide: [{ x: -1e9, kmh: 50 }]
+      }
     });
   })()
 ];

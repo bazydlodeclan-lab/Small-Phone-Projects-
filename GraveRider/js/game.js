@@ -321,7 +321,7 @@ var Game = (function () {
       // Crash is checked first: crashing on the same step as the finish = crash
       // (or a landing too hard for the rider's legs to hold)
       var onPad = (state.zone && state.zone.pad) || state.inLoop; // pumpkins and loops are not hard landings
-      if (bike.riderHit || (!onPad && bike.riderG > CONFIG.riderMaxG) || isFallen()) crash();
+      if (bike.riderHit || (CONFIG.hardLandingCrash && !onPad && bike.riderG > CONFIG.riderMaxG) || isFallen()) crash();
       else {
         trackFlips();
         trackStats();
@@ -519,7 +519,13 @@ var Game = (function () {
     camera.look += (targetLook - camera.look) * 0.03;
     var s = CONFIG.cameraSmoothing;
     camera.x += (p.x + camera.look - camera.x) * s;
-    camera.y += (p.y - camera.y) * s;
+    // Keep the ground in view when the bike is high in the air: look lower, but never so
+    // low that the bike leaves the top of the screen
+    var H = viewH / worldScale(), targetY = p.y;
+    var fy = floorYAt(state.level, p.x), fy2 = floorYAt(state.level, p.x + vel.x * 0.35);
+    var ground = fy === null ? fy2 : fy2 === null ? fy : Math.max(fy, fy2);
+    if (ground !== null) targetY = Math.min(Math.max(p.y, ground - 0.42 * H + 90), p.y + 0.38 * H);
+    camera.y += (targetY - camera.y) * s;
   }
 
   // ---------------------------------------------------
@@ -545,7 +551,7 @@ var Game = (function () {
   }
   window.addEventListener("resize", resize);
 
-  function worldScale() { return viewH / 560; }
+  function worldScale() { return viewH / 900; } // zoomed out: about 900 px (14 m) of height on screen
 
   function drawBackground() {
     if (state.level.theme) { Themes.drawBackground(ctx, state.level.theme, camera, viewW, viewH, state.steps / 60); return; }
@@ -619,6 +625,15 @@ var Game = (function () {
           });
           ctx.strokeStyle = st[1]; ctx.lineWidth = st[0]; ctx.stroke();
         });
+        return;
+      }
+      if (piece.beam) { // a hanging beam: a thick plank on two chains that go up out of sight
+        var a = pts[0], z = pts[pts.length - 1];
+        ctx.strokeStyle = "rgba(200,200,200,0.55)"; ctx.lineWidth = 4;
+        [a.x + 18, z.x - 18].forEach(function (cx2) { ctx.beginPath(); ctx.moveTo(cx2, a.y - 24); ctx.lineTo(cx2, a.y - 900); ctx.stroke(); });
+        ctx.fillStyle = level.groundColor; ctx.fillRect(a.x, a.y - 26, z.x - a.x, 26);
+        ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(a.x, a.y - 26, z.x - a.x, 26);
+        ctx.fillStyle = level.groundTopColor; ctx.fillRect(a.x, a.y - 4, z.x - a.x, 4);
         return;
       }
       var edge = piece.solidAbove ? -5000 : 5000;
@@ -733,6 +748,7 @@ var Game = (function () {
   function groundYAt(level, x) {
     var best = 0;
     level.terrain.forEach(function (piece) {
+      if (piece.solidAbove) return; // ceilings and hanging beams are not ground
       var pts = piece.points || piece;
       for (var i = 0; i < pts.length - 1; i++) {
         var a = pts[i], b = pts[i + 1];
