@@ -50,6 +50,30 @@ var Shapes = {
     }
     return pts;
   },
+  // A loop-the-loop with its bottom at (x, y) and radius R (pixels): you ride in
+  // at the bottom, up the right side, upside down across the top (moving left),
+  // down the left side and out again. Returns three terrain pieces (entry arc,
+  // main arc, exit arc) tagged with a loop number; the entry arc stops being
+  // solid once you are over the top (otherwise it would block the exit).
+  // Put the floor in front of the loop ending at (x, y) and the floor after it
+  // starting at (x, y). `id` is any number, different for each loop of a level.
+  loop: function (x, y, R, id) {
+    var cx = x, cy = y - R, entry = [], main = [], exit = [];
+    function pt(deg) { var a = deg * Math.PI / 180; return { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) }; }
+    var steps = 48;
+    for (var i = 0; i <= steps; i++) { // 90 deg (bottom) -> 0 (right) -> -90 (top) -> -180 (left) -> -270 (bottom)
+      var d = 90 - i * 360 / steps, p = pt(d);
+      if (d > 0) entry.push(p);
+      if (d <= 10 && d >= -190) main.push(p);
+      if (d < -180 || d === -180) exit.push(p);
+    }
+    entry.push(pt(0)); main.unshift(pt(10)); // overlap the pieces by one point so there is no gap
+    return [
+      { points: entry, ring: true, loop: id, role: "entry", cx: cx, cy: cy, R: R },
+      { points: main, ring: true, loop: id, role: "main", cx: cx, cy: cy, R: R },
+      { points: exit, ring: true, loop: id, role: "exit", cx: cx, cy: cy, R: R }
+    ];
+  },
   // Joins several point lists into one ground line (drops duplicate joints)
   join: function () {
     var out = [];

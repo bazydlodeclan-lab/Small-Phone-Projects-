@@ -134,6 +134,31 @@ var Game = (function () {
   // LEVEL LOADING
   // ---------------------------------------------------
   // Level data is in pixels; physics is in metres
+  // Loop-the-loops: once the bike is over the top (left of the centre, above it)
+  // the entry arc is switched off so the bike can roll out underneath it.
+  var loopOver = {};   // loop id -> true once the bike has gone over the top
+  function loopPhases() {
+    var bike = state.bike;
+    if (!bike || !state.level.terrain) return;
+    var p = bike.chassis.getPosition(), x = p.x * PPM, y = p.y * PPM;
+    state.inLoop = false;
+    state.level.terrain.forEach(function (piece) {
+      if (piece.loop === undefined || piece.role !== "main") return;
+      // riding a loop is a long, hard push into the seat, not a hard landing
+      if (Math.abs(x - piece.cx) < piece.R * 1.3 && y > piece.cy - piece.R * 1.3 && y < piece.cy + piece.R * 1.3) state.inLoop = true;
+      if (x < piece.cx && y < piece.cy - piece.R * 0.3 && Math.abs(x - piece.cx) < piece.R * 1.3) loopOver[piece.loop] = true;
+      if (x < piece.cx - piece.R * 1.5) loopOver[piece.loop] = false; // before the loop again (restart)
+    });
+  }
+  world.on("pre-solve", function (contact) {
+    var a = contact.getFixtureA().getUserData(), b = contact.getFixtureB().getUserData();
+    var tag = (a && a.loopEntry !== undefined) ? a : (b && b.loopEntry !== undefined) ? b : null;
+    if (tag && loopOver[tag.loopEntry]) contact.setEnabled(false);
+    // the exit arc hangs over the approach, so it only counts once you are over the top
+    var ex = (a && a.loopExit !== undefined) ? a : (b && b.loopExit !== undefined) ? b : null;
+    if (ex && !loopOver[ex.loopExit]) contact.setEnabled(false);
+  });
+
   function buildTerrain(level) {
     var ground = world.createBody({ type: "static", userData: "ground" });
     level.terrain.forEach(function (piece) {
@@ -141,7 +166,10 @@ var Game = (function () {
       // (solidAbove = the ground is ABOVE the line, for ceilings; only
       // changes how it is drawn - the physics surface is the line itself)
       var pts = (piece.points || piece).map(function (p) { return Vec2(p.x / PPM, p.y / PPM); });
-      ground.createFixture({ shape: planck.Chain(pts, false), friction: 1, restitution: 0 });
+      // (loop entry arcs are tagged so they can be switched off, see loopPhases)
+      ground.createFixture({ shape: planck.Chain(pts, false), friction: 1, restitution: 0,
+        userData: piece.loop !== undefined && piece.role === "entry" ? { loopEntry: piece.loop } :
+                  piece.loop !== undefined && piece.role === "exit" ? { loopExit: piece.loop } : undefined });
     });
   }
 
@@ -155,6 +183,7 @@ var Game = (function () {
     state.level = level;
     buildTerrain(level);
 
+    rollSteps = 0; lastGravUp = false; loopOver = {};
     state.mode = "ready";
     state.timeMs = 0;
     state.runSteps = 0;
@@ -232,6 +261,27 @@ var Game = (function () {
     Bike.applyTuning(bike, p.friction, p.bounce);
   }
 
+  // When gravity turns over (the Bat level's zones), the bike turns over with it:
+  // a torque swings it half a turn so it lands on its wheels on the ceiling (or
+  // back on the floor). Without this the bike would hit the ceiling on its back.
+  var rollTarget = null, rollSteps = 0, lastGravUp = false;
+  function flipAssistGravity(bike) {
+    var up = state.physics.gravityDir.y < 0;
+    if (up !== lastGravUp) {
+      lastGravUp = up;
+      // the nearest angle that is "wheels down" for the new gravity (0 on the floor, half a turn on the ceiling)
+      var a = bike.chassis.getAngle();
+      rollTarget = Math.round((a - (up ? Math.PI : 0)) / (2 * Math.PI)) * 2 * Math.PI + (up ? Math.PI : 0);
+      rollSteps = 90; // 1.5 s
+    }
+    if (rollSteps > 0 && state.mode === "playing" && !bike.crashed) {
+      rollSteps--;
+      var c = bike.chassis, err = rollTarget - c.getAngle();
+      c.applyTorque(Math.max(-2500, Math.min(2500, 1500 * err - 450 * c.getAngularVelocity())), true);
+      if (Math.abs(err) < 0.15 && Bike.touching(bike)) rollSteps = 0;
+    }
+  }
+
   // ---------------------------------------------------
   // ONE FIXED PHYSICS STEP
   // ---------------------------------------------------
@@ -247,13 +297,17 @@ var Game = (function () {
     }
 
     updatePhysics();
+    loopPhases();
+    flipAssistGravity(bike);
     Bike.suspension(bike);
     Bike.resistance(bike, state.gravity);
     if (state.mode === "playing" || state.mode === "ready" || state.mode === "finished") Bike.tyreGrip(bike);
     if (state.mode === "playing") Bike.control(bike, input);
     else if (state.mode !== "crashed") Bike.control(bike, HOLD);
+    var vyBefore = bike.chassis.getLinearVelocity().y;
     world.step(CONFIG.physicsStepSec, 20, 10);
     Bike.updateContacts(bike);
+    padBounce(bike, vyBefore);
 
     // The clock runs while playing and while waiting to respawn after a crash
     if (state.mode === "playing" || state.mode === "crashed") {
@@ -266,7 +320,8 @@ var Game = (function () {
     if (state.mode === "playing") {
       // Crash is checked first: crashing on the same step as the finish = crash
       // (or a landing too hard for the rider's legs to hold)
-      if (bike.riderHit || bike.riderG > CONFIG.riderMaxG || isFallen()) crash();
+      var onPad = (state.zone && state.zone.pad) || state.inLoop; // pumpkins and loops are not hard landings
+      if (bike.riderHit || (!onPad && bike.riderG > CONFIG.riderMaxG) || isFallen()) crash();
       else {
         trackFlips();
         trackStats();
@@ -286,6 +341,23 @@ var Game = (function () {
     state.popups.forEach(function (p) { p.age += dt; });
     state.popups = state.popups.filter(function (p) { return p.age < 1600; });
     if (state.split) state.split.age += dt;
+  }
+
+  // Pumpkin pads are trampolines: landing on one throws the whole bike back up
+  // (the tyres' own bounce is soaked up by the suspension and legs, so do it here).
+  var padCooldown = 0;
+  function padBounce(bike, vyBefore) {
+    if (padCooldown > 0) padCooldown--;
+    var z = state.zone;
+    if (!z || !z.pad || bike.crashed || padCooldown > 0) return;
+    if (!(bike.rearOnGround || bike.frontOnGround) || vyBefore < 2.5) return; // landing: moving down at >2.5 m/s
+    var e = (z.physics && z.physics.bounce) || 0.8;
+    [bike.chassis, bike.rider, bike.rear.wheel, bike.front.wheel].forEach(function (b) {
+      var v = b.getLinearVelocity();
+      b.setLinearVelocity(Vec2(v.x, -vyBefore * e));
+    });
+    padCooldown = 12;
+    popup("BOING!", "#ffa733");
   }
 
   function isFallen() {
@@ -325,7 +397,9 @@ var Game = (function () {
       // Just took off: "upright" is the nearest whole turn to the current angle.
       // If the bike is far from upright (a wheel brushed something mid-flip),
       // keep counting the flip that was already going.
-      var near = Math.round(angle / TURN) * TURN;
+      // (when gravity points up, "upright" is upside down: half a turn)
+      var base = state.physics && state.physics.gravityDir.y < 0 ? Math.PI : 0;
+      var near = Math.round((angle - base) / TURN) * TURN + base;
       if (Math.abs(angle - near) < Math.PI / 2) {
         state.airUpright = near;
         state.airMin = angle;
@@ -474,6 +548,7 @@ var Game = (function () {
   function worldScale() { return viewH / 560; }
 
   function drawBackground() {
+    if (state.level.theme) { Themes.drawBackground(ctx, state.level.theme, camera, viewW, viewH, state.steps / 60); return; }
     // Daytime sky
     var g = ctx.createLinearGradient(0, 0, 0, viewH);
     g.addColorStop(0, "#5f9fd8");
@@ -509,8 +584,16 @@ var Game = (function () {
     ctx.scale(s, s);
     ctx.translate(-camera.x, -camera.y);
 
+    // Scenery along the track (behind the ground edge)
+    if (level.theme) {
+      var halfW = viewW * 0.58 / s + 200;
+      Themes.drawProps(ctx, level.theme, level, camera.x - halfW, camera.x + halfW,
+        function (x) { return floorYAt(level, x); }, function (x) { return ceilYAt(level, x); });
+    }
+
     // Physics zones
     (level.zones || []).forEach(function (z) {
+      if (z.pad) return; // bounce pads are drawn after the ground
       ctx.fillStyle = z.color || "rgba(255,255,255,0.08)";
       ctx.fillRect(z.x, z.y, z.w, z.h);
       if (z.label) {
@@ -524,6 +607,20 @@ var Game = (function () {
     // Ground
     level.terrain.forEach(function (piece) {
       var pts = piece.points || piece;
+      if (piece.ring) { // loop-the-loop: a thick track band, not a filled hill
+        ctx.lineJoin = "round"; ctx.lineCap = "butt";
+        [[44, "rgba(30,15,45,0.9)"], [30, level.groundColor], [4, level.groundTopColor]].forEach(function (st, k) {
+          ctx.beginPath();
+          pts.forEach(function (p, i) {
+            // draw the band on the outside of the riding surface (the riding side is inside)
+            var dx = p.x - piece.cx, dy = p.y - piece.cy, len = Math.hypot(dx, dy) || 1, off = k === 2 ? 0 : (st[0] / 2 - 2);
+            var qx = p.x + dx / len * off, qy = p.y + dy / len * off;
+            if (i) ctx.lineTo(qx, qy); else ctx.moveTo(qx, qy);
+          });
+          ctx.strokeStyle = st[1]; ctx.lineWidth = st[0]; ctx.stroke();
+        });
+        return;
+      }
       var edge = piece.solidAbove ? -5000 : 5000;
       ctx.beginPath();
       ctx.moveTo(pts[0].x, edge);
@@ -534,6 +631,7 @@ var Game = (function () {
       ctx.fill();
       var dirt = dirtPattern();
       if (dirt) { ctx.fillStyle = dirt; ctx.fill(); }
+      if (level.groundTint) { ctx.fillStyle = level.groundTint; ctx.fill(); } // theme colour over the dirt picture
       // Packed, darker dirt along the riding surface, with a lighter top edge
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
@@ -545,6 +643,21 @@ var Game = (function () {
       ctx.strokeStyle = level.groundTopColor;
       ctx.lineWidth = 4;
       ctx.stroke();
+    });
+
+    // Bounce pads: rows of pumpkins you can bounce on (physics = the zone's bounce)
+    (level.zones || []).forEach(function (z) {
+      if (!z.pad) return;
+      var pw = 90, n = Math.max(1, Math.round(z.w / pw)), w2 = z.w / n;
+      for (var i = 0; i < n; i++) {
+        var cx = z.x + (i + 0.5) * w2, gy = floorYAt(level, cx);
+        if (gy === null) continue;
+        Themes.pumpkin(ctx, cx, gy + 22, w2 * 0.55, 26, i % 2 === 0);
+      }
+      if (z.label) {
+        ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.font = "bold 18px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText(z.label, z.x + z.w / 2, floorYAt(level, z.x + z.w / 2) - 90);
+      }
     });
 
     // Checkpoint flags
@@ -585,6 +698,35 @@ var Game = (function () {
     Bike.draw(ctx, state.bike);
     ctx.restore();
     ctx.restore();
+  }
+
+  // Height of the floor at x (the lowest surface that is not a ceiling), or null
+  function floorYAt(level, x) {
+    var best = null;
+    level.terrain.forEach(function (piece) {
+      if (piece.solidAbove) return;
+      var pts = piece.points || piece;
+      for (var i = 0; i < pts.length - 1; i++) {
+        var a = pts[i], b = pts[i + 1];
+        if (x >= a.x && x <= b.x && b.x !== a.x) {
+          var y = a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x);
+          if (best === null || y > best) best = y;
+        }
+      }
+    });
+    return best;
+  }
+  function ceilYAt(level, x) {
+    var best = null;
+    level.terrain.forEach(function (piece) {
+      if (!piece.solidAbove) return;
+      var pts = piece.points || piece;
+      for (var i = 0; i < pts.length - 1; i++) {
+        var a = pts[i], b = pts[i + 1];
+        if (x >= a.x && x <= b.x && b.x !== a.x) best = a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x);
+      }
+    });
+    return best;
   }
 
   // Height of the ground at x (top-most surface), used to place the finish flag

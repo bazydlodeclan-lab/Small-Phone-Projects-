@@ -314,7 +314,7 @@ var Bike = (function () {
       var w = s.wheel, isFront = s === bike.front, load = 0, slipMax = 0;
       for (var ce = w.getContactList(); ce; ce = ce.next) {
         var ct = ce.contact;
-        if (!ct.isTouching() || ce.other.getUserData() !== "ground") continue;
+        if (!ct.isTouching() || !ct.isEnabled() || ce.other.getUserData() !== "ground") continue;
         var n = ct.getWorldManifold(null).normal, sign = ct.getFixtureB().getBody() === w ? 1 : -1;
         // rolling direction along the ground (to the right of the bike)
         var tx = -sign * n.y, ty = sign * n.x;
@@ -571,7 +571,7 @@ var Bike = (function () {
   function touchesGround(body, onlyFixtures) {
     for (var ce = body.getContactList(); ce; ce = ce.next) {
       var ct = ce.contact;
-      if (!ct.isTouching() || ce.other.getUserData() !== "ground") continue;
+      if (!ct.isTouching() || !ct.isEnabled() || ce.other.getUserData() !== "ground") continue;
       if (!onlyFixtures) return true;
       var mine = ct.getFixtureA().getBody() === body ? ct.getFixtureA() : ct.getFixtureB();
       if (onlyFixtures.indexOf(mine.getUserData()) >= 0) return true;
@@ -583,7 +583,7 @@ var Bike = (function () {
   function groundAngleUnder(wheel) {
     for (var ce = wheel.getContactList(); ce; ce = ce.next) {
       var ct = ce.contact;
-      if (!ct.isTouching() || ce.other.getUserData() !== "ground") continue;
+      if (!ct.isTouching() || !ct.isEnabled() || ce.other.getUserData() !== "ground") continue;
       var wm = ct.getWorldManifold(null), n = wm.normal, c = wheel.getPosition(), p = wm.points[0];
       var nx = n.x, ny = n.y;
       if (p && (c.x - p.x) * nx + (c.y - p.y) * ny < 0) { nx = -nx; ny = -ny; } // point away from the ground
@@ -598,7 +598,7 @@ var Bike = (function () {
     var w = bike.rear.wheel, fwd = bike.chassis.getWorldVector(Vec2(1, 0)), F = 0;
     for (var ce = w.getContactList(); ce; ce = ce.next) {
       var ct = ce.contact;
-      if (!ct.isTouching() || ce.other.getUserData() !== "ground") continue;
+      if (!ct.isTouching() || !ct.isEnabled() || ce.other.getUserData() !== "ground") continue;
       var n = ct.getWorldManifold(null).normal, m = ct.getManifold();
       var sign = ct.getFixtureB().getBody() === w ? 1 : -1; // force on the wheel, not the ground
       for (var k = 0; k < m.pointCount; k++) {
