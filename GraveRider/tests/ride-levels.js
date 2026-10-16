@@ -3,7 +3,7 @@
 // and checks the level rules. Run from the GraveRider folder:
 //   node tests/ride-levels.js            (all levels, speeds 0.9 / 1.0 / 1.1)
 //   node tests/ride-levels.js 1          (just level 1)
-// Rules: every ride finishes with 0 crashes, never stuck, a hold-the-throttle rider crashes or is slower,
+// Rules: every ride finishes with 0 crashes, never stuck, (a hold-the-throttle rider is only reported),
 // at least 50 m of run-out after the finish.
 //
 // testRide in each level: [{ x, kmh, flip }] - from each x onward the rider aims for
@@ -36,7 +36,7 @@ const scales = [0.9, 1, 1.1];
     function groundY(x) { // top-most ground surface at x (null = hole)
       let best = null;
       L.terrain.forEach(piece => {
-        if (piece.solidAbove) return; // beams and ceilings are not ground
+        if (piece.solidAbove) return; // ceilings are not ground
         const pts = piece.points || piece;
         for (let i = 0; i < pts.length - 1; i++) {
           const a = pts[i], b = pts[i + 1];
@@ -150,12 +150,13 @@ const scales = [0.9, 1, 1.1];
   });
   // Holding the throttle all the time must not be the best way to ride
   const h = report.holdRide, smart = report.rides[1];
-  if (h.mode === "finished" && h.crashes === 0 && h.timeS < smart.timeS * 1.05)
-    problems.push("holding the throttle is best: " + h.timeS + " s vs " + smart.timeS + " s (needs a crash or 5% slower)");
+  // (Not a failure any more: the hanging beams that punished speed were removed on the owner's
+  // request, so this is only printed as information.)
+  const holdNote = h.mode === "finished" && h.crashes === 0 && h.timeS < smart.timeS * 1.05 ? " [INFO: holding the throttle is the fastest way]" : "";
   if (errors.length) problems.push("console errors: " + errors.join(" | "));
   console.log((problems.length ? "FAIL " : "PASS ") + "Level " + (index + 1) + " (" + report.name + ")  " + report.checks.lengthM + " m, " +
     report.rides.map(r => "x" + r.scale + ": " + r.timeS + " s, " + r.flips + " flip" + (r.flips === 1 ? "" : "s") + ", peak " + r.maxRiderG + " g").join("; ") +
-    "; hold-throttle: " + h.mode + " " + h.timeS + " s, " + h.crashes + " crash(es) at x " + h.crashXs.join(", "));
+    "; hold-throttle: " + h.mode + " " + h.timeS + " s, " + h.crashes + " crash(es) at x " + h.crashXs.join(", ") + holdNote);
   problems.forEach(x => console.log("     - " + x));
   if (problems.length) failed++;
   }

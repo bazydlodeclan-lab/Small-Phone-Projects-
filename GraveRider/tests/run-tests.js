@@ -546,7 +546,7 @@ function installHelpers() {
     G.spawnBike({ x: s.level.finish.x + 50, y: -40 }); G.step();
     out.tunedResult = s.result; out.tunedBest = s.bestMs;
     // d) a damaged save file (no splits) is ignored instead of freezing the game
-    try { localStorage.setItem("graveRider.best.v1.Test Track", JSON.stringify({ timeMs: 30000, ghost: { every: 2, frames: [[0,0,0,0,0,0,0,0,0,0,0,0,0]] } })); } catch (e) {}
+    try { localStorage.setItem(Game.recordKey(LEVELS[0]), JSON.stringify({ timeMs: 30000, ghost: { every: 2, frames: [[0,0,0,0,0,0,0,0,0,0,0,0,0]] } })); } catch (e) {}
     G.loadLevel(0);
     out.damagedBest = s.best;
     Object.assign(G.input, { gas: true });
@@ -554,7 +554,7 @@ function installHelpers() {
     try { G.spawnBike({ x: s.level.checkpoints[0].x - 30, y: -40 }); for (let i = 0; i < 30; i++) G.step(); } catch (e) { threw = e.message; }
     out.damagedThrew = threw;
     Object.assign(G.input, T.none);
-    try { localStorage.removeItem("graveRider.best.v1.Test Track"); } catch (e) {}
+    try { localStorage.removeItem(Game.recordKey(LEVELS[0])); } catch (e) {}
     // e) frame touching the ground (wheels in the air) = on the ground: no air time, no flip assist
     const realUpdate = Bike.updateContacts;
     function belly(assist) {
@@ -669,13 +669,13 @@ function installHelpers() {
     for (let i = 0; i < 60 && s.mode !== "finished"; i++) G.step();
     Object.assign(G.input, T.none);
     G.loadLevel(0); s.paused = false;
-    let stored = false; try { stored = !!localStorage.getItem("graveRider.best.v1.Test Track"); } catch (e) {}
+    let stored = false; try { stored = !!localStorage.getItem(Game.recordKey(LEVELS[0])); } catch (e) {}
     return { best: !!s.best, stored };
   });
   await page.click("#tuning-clear");
   const cleared = await page.evaluate(() => {
     const s = Game.state, now = { best: s.best, bestMs: s.bestMs };
-    let stored = true; try { stored = !!localStorage.getItem("graveRider.best.v1.Test Track"); } catch (e) {}
+    let stored = true; try { stored = !!localStorage.getItem(Game.recordKey(LEVELS[0])); } catch (e) {}
     Game.loadLevel(0);
     return { now, stored, afterLoad: s.best };
   });
@@ -890,6 +890,26 @@ function installHelpers() {
     "bounced up at " + themed.pad.upSpeed.toFixed(1) + " m/s");
   check("Moon level gravity is 40% of normal", Math.abs(themed.moon.g - themed.moon.expect) < 0.01,
     themed.moon.g.toFixed(2) + " m/s² (expected " + themed.moon.expect.toFixed(2) + ")");
+
+  // 20. Best times belong to one map shape: a changed map (or an old version's save) starts empty
+  const maps = await page.evaluate(() => {
+    const G = Game, s = G.state; s.paused = true;
+    const L0 = LEVELS[0], pts = L0.terrain[0].points || L0.terrain[0];
+    const k1 = G.recordKey(L0); pts[1].y += 5; const k2 = G.recordKey(L0); pts[1].y -= 5;
+    const good = { timeMs: 30000, splits: [], ghost: { every: 2, frames: [[0,0,0,0,0,0,0,0,0,0,0,0,0]] } };
+    let oldLoaded = true;
+    try {
+      localStorage.setItem("graveRider.best.v1." + L0.name, JSON.stringify(good));
+      G.clearBest(); // (clears everything, so save the old one again afterwards)
+      localStorage.setItem("graveRider.best.v1." + L0.name, JSON.stringify(good));
+      G.loadLevel(0); oldLoaded = !!s.best;
+      localStorage.removeItem("graveRider.best.v1." + L0.name);
+    } catch (e) {}
+    s.paused = false;
+    return { changed: k1 !== k2, oldLoaded };
+  });
+  check("A changed map gets its own best-time slot", maps.changed, "");
+  check("A best time saved by an older version is not loaded", !maps.oldLoaded, "");
 
   check("No console errors during all tests", errors.length === 0, errors.join(" | "));
   await browser.close();

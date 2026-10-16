@@ -65,9 +65,19 @@ var Game = (function () {
   // ---------------------------------------------------
   // BEST TIMES: saved in this browser (localStorage), one per level. If the
   // browser blocks saving, best times last until the page is closed.
+  // The saved name includes a fingerprint of the level's shape, so a changed map
+  // (a new version of the game) starts with no best time instead of an old one.
   // ---------------------------------------------------
   var Records = (function () {
-    var PREFIX = "graveRider.best.v1.", memory = {};
+    var ALL = "graveRider.best.", PREFIX = ALL + "v2.", memory = {};
+    function fingerprint(level) { // FNV-1a hash of the track shape and finish
+      var h = 2166136261;
+      function mix(n) { h ^= Math.round(n * 10); h = Math.imul(h, 16777619) >>> 0; }
+      level.terrain.forEach(function (piece) { (piece.points || piece).forEach(function (p) { mix(p.x); mix(p.y); }); });
+      mix(level.finish.x);
+      return h.toString(36);
+    }
+    function key(level) { return PREFIX + level.name + "@" + fingerprint(level); }
     function validFrame(f) { return Array.isArray(f) && f.length === 13; }
     function valid(run) {
       var g = run && run.ghost;
@@ -76,25 +86,27 @@ var Game = (function () {
         validFrame(g.frames[0]) && validFrame(g.frames[g.frames.length - 1]));
     }
     function load(level) {
-      if (memory[level.name]) return memory[level.name];
+      var k = key(level);
+      if (memory[k]) return memory[k];
       try {
-        var run = JSON.parse(localStorage.getItem(PREFIX + level.name));
-        if (valid(run)) return (memory[level.name] = run);
+        var run = JSON.parse(localStorage.getItem(k));
+        if (valid(run)) return (memory[k] = run);
       } catch (e) { /* no saved time, or saving is blocked */ }
       return null;
     }
     function save(level, run) {
-      memory[level.name] = run;
-      try { localStorage.setItem(PREFIX + level.name, JSON.stringify(run)); return true; }
+      var k = key(level);
+      memory[k] = run;
+      try { localStorage.setItem(k, JSON.stringify(run)); return true; }
       catch (e) { return false; }
     }
     function clear() {
-      memory = {};
+      memory = {}; // (this version's times and older versions' times)
       try {
-        Object.keys(localStorage).forEach(function (k) { if (k.indexOf(PREFIX) === 0) localStorage.removeItem(k); });
+        Object.keys(localStorage).forEach(function (k) { if (k.indexOf(ALL) === 0) localStorage.removeItem(k); });
       } catch (e) { /* saving is blocked: nothing stored */ }
     }
-    return { load: load, save: save, clear: clear };
+    return { load: load, save: save, clear: clear, key: key };
   })();
 
   // ---------------------------------------------------
@@ -627,15 +639,6 @@ var Game = (function () {
         });
         return;
       }
-      if (piece.beam) { // a hanging beam: a thick plank on two chains that go up out of sight
-        var a = pts[0], z = pts[pts.length - 1];
-        ctx.strokeStyle = "rgba(200,200,200,0.55)"; ctx.lineWidth = 4;
-        [a.x + 18, z.x - 18].forEach(function (cx2) { ctx.beginPath(); ctx.moveTo(cx2, a.y - 24); ctx.lineTo(cx2, a.y - 900); ctx.stroke(); });
-        ctx.fillStyle = level.groundColor; ctx.fillRect(a.x, a.y - 26, z.x - a.x, 26);
-        ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(a.x, a.y - 26, z.x - a.x, 26);
-        ctx.fillStyle = level.groundTopColor; ctx.fillRect(a.x, a.y - 4, z.x - a.x, 4);
-        return;
-      }
       var edge = piece.solidAbove ? -5000 : 5000;
       ctx.beginPath();
       ctx.moveTo(pts[0].x, edge);
@@ -961,6 +964,7 @@ var Game = (function () {
   return { state: state, input: input, world: world, step: step, bikePos: bikePos, bikeVel: bikeVel,
     loadLevel: loadLevel, spawnBike: spawnBike, camera: camera, raceTimeMs: raceTimeMs, ghostPose: ghostPose,
     formatTime: formatTime, formatDelta: formatDelta,
+    recordKey: Records.key,
     clearBest: function () { Records.clear(); state.best = null; state.bestMs = null; } };
 })();
 
