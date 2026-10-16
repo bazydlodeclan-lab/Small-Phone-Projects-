@@ -40,11 +40,29 @@
   </div>
 
   <!-- Order matters: physics library first, the game last -->
-  <script src="lib/planck.min.js"></script>
-  <script src="js/config.js"></script>
-  <script src="js/levels.js"></script>
-  <script src="js/bike.js"></script>
-  <script src="js/themes.js"></script>
-  <script src="js/game.js"></script>
+  <!-- If the game cannot start, show why on the screen instead of a blank page -->
+  <script>
+    (function () {
+      function show(msg) {
+        var d = document.getElementById("startError");
+        if (!d) {
+          d = document.createElement("div"); d.id = "startError";
+          d.style.cssText = "position:fixed;left:0;right:0;top:0;padding:14px;background:#b00020;color:#fff;font:16px sans-serif;z-index:99;white-space:pre-wrap";
+          document.body.appendChild(d);
+        }
+        d.textContent += msg + "\n";
+      }
+      window.addEventListener("error", function (e) {
+        if (e.target && e.target.src) show("A game file did not load: " + e.target.src + "\nUnzip the whole folder and open index.html inside it.");
+        else show("Game error: " + e.message + (e.filename ? " (" + e.filename.split("/").pop() + ":" + e.lineno + ")" : ""));
+      }, true);
+    })();
+  </script>
+  <script src="lib/planck.min.js?v=20261016"></script>
+  <script src="js/config.js?v=20261016"></script>
+  <script src="js/levels.js?v=20261016"></script>
+  <script src="js/bike.js?v=20261016"></script>
+  <script src="js/themes.js?v=20261016"></script>
+  <script src="js/game.js?v=20261016"></script>
 </body>
 </html>
