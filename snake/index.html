@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snake Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <h1>Snake Lab <small>Google Snake remake</small></h1>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button id="tab-play" role="tab" data-tab="play" aria-selected="true">Play</button>
+      <button id="tab-ai" role="tab" data-tab="ai" aria-selected="false">Watch AI</button>
+      <button id="tab-train" role="tab" data-tab="train" aria-selected="false">Train AI</button>
+    </nav>
+  </header>
+
+  <main class="layout">
+    <!-- The game board -->
+    <section class="game-card" aria-label="Game">
+      <div class="scorebar">
+        <div class="stat" title="Score"><canvas id="appleIcon" width="60" height="60" aria-hidden="true"></canvas><span id="score">0</span></div>
+        <div class="stat" title="Best score">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#FFC107" d="M7 3h10v2h3v3a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V18h3v3H8v-3h3v-3.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V5h3V3zm-1 4v1a2 2 0 0 0 2 2V7H6zm12 0h-2v3a2 2 0 0 0 2-2V7z"/></svg>
+          <span id="best">0</span>
+        </div>
+        <div class="modeinfo" id="modeinfo"></div>
+        <button class="iconbtn" id="openSettings" aria-label="Game settings" title="Game settings">
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.2 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5L19.4 13zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+        </button>
+      </div>
+      <div class="board-wrap" id="boardWrap">
+        <canvas id="board" aria-label="Snake board"></canvas>
+        <div class="overlay" id="overlay" hidden></div>
+        <div class="banner" id="banner" hidden></div>
+      </div>
+      <div class="dpad" id="dpad" aria-label="Arrow buttons">
+        <button class="up" data-dir="0" aria-label="Up">&#9650;</button>
+        <button class="left" data-dir="3" aria-label="Left">&#9664;</button>
+        <button class="down" data-dir="2" aria-label="Down">&#9660;</button>
+        <button class="right" data-dir="1" aria-label="Right">&#9654;</button>
+      </div>
+    </section>
+
+    <!-- Side panel: changes with the tab -->
+    <aside class="panel">
+      <div id="panel-play" class="section">
+        <h2>Play</h2>
+        <p>Use the arrow keys or WASD. On a phone, swipe on the board or use the arrow buttons. Space restarts.</p>
+        <div class="section">
+          <h3>Current game</h3>
+          <p id="playSummary"></p>
+          <p class="muted" id="playModeDesc"></p>
+          <div class="row"><button class="btn" id="playStart">Play</button><button class="btn ghost" id="playSettings">Change mode, size, apples, speed</button></div>
+        </div>
+        <p class="muted" id="approxNote" hidden>Modes marked with * follow fan descriptions of Google's rules. They may differ slightly from the real game.</p>
+      </div>
+
+      <div id="panel-ai" class="section" hidden>
+        <h2>Watch the AI</h2>
+        <div class="choice" id="aiKind">
+          <button data-kind="perfect" aria-pressed="true"><b>Perfect</b><span>Never dies. Always fills the board when the mode allows it.</span></button>
+          <button data-kind="risky" aria-pressed="false"><b>Speedrunner</b><span>Goes straight for apples. Faster, but can die.</span></button>
+        </div>
+        <div class="section">
+          <h3>AI speed</h3>
+          <div class="seg" id="aiSpeed">
+            <button data-v="1" aria-pressed="true">Game speed</button>
+            <button data-v="3" aria-pressed="false">3×</button>
+            <button data-v="10" aria-pressed="false">10×</button>
+            <button data-v="max" aria-pressed="false">Max</button>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn" id="aiStart">Start</button>
+          <button class="btn ghost" id="aiPause" disabled>Pause</button>
+        </div>
+        <div id="aiBadge"></div>
+        <div class="stats">
+          <div><b id="aiApples">0</b><span>Apples</span></div>
+          <div><b id="aiFill">0%</b><span>Board filled</span></div>
+          <div><b id="aiMoves">0</b><span>Moves</span></div>
+          <div><b id="aiTime">0:00</b><span>Game time</span></div>
+        </div>
+        <p class="muted" id="aiResult"></p>
+        <p class="muted">Game time counts moves at the chosen game speed, so it shows how long the run would take in real play.</p>
+      </div>
+
+      <div id="panel-train" class="section" hidden>
+        <h2>Train an AI from scratch</h2>
+        <p class="muted">This is reinforcement learning. The AI starts knowing nothing. It tries moves, collects the rewards and punishments you set below, and slowly learns what works.</p>
+        <div class="row">
+          <button class="btn" id="trainStart">Start training</button>
+          <div class="seg" id="trainView">
+            <button data-v="live" aria-pressed="true">Watch each move</button>
+            <button data-v="fast" aria-pressed="false">Fast-forward</button>
+          </div>
+        </div>
+        <div class="stats">
+          <div><b id="trEp">0</b><span>Attempts</span></div>
+          <div><b id="trBest">0</b><span>Best score</span></div>
+          <div><b id="trAvg">0</b><span>Avg, last 50</span></div>
+          <div><b id="trEps">100%</b><span>Random moves</span></div>
+        </div>
+
+        <div class="section">
+          <div class="row" style="justify-content: space-between">
+            <h3 style="margin:0">Progress</h3>
+            <label class="muted">Show <select id="modeFilter" aria-label="Which mode to show"><option value="all">All modes</option></select></label>
+          </div>
+          <div class="legend">
+            <span><i class="dot" style="background: var(--series-dot)"></i>Each attempt</span>
+            <span><i style="background: var(--series-1)"></i>Average of last 50</span>
+            <span><i style="background: var(--series-2)"></i>Best so far</span>
+          </div>
+          <div class="chart-wrap"><canvas id="chart" aria-label="Score of every attempt"></canvas><div class="tip" id="tip" hidden></div></div>
+        </div>
+
+        <div class="section">
+          <h3>Progress by mode</h3>
+          <div class="table-wrap" style="max-height:220px">
+            <table>
+              <thead><tr><th>Mode</th><th>Board</th><th>Apples</th><th>Attempts</th><th>Wins</th><th>Avg score</th><th>Last 50 avg</th><th>Best</th></tr></thead>
+              <tbody id="modeTable"><tr><td colspan="8" class="muted">Train in different modes (change them with the gear button) to compare them here.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="section">
+          <div class="row" style="justify-content: space-between">
+            <h3 style="margin:0">Every attempt</h3>
+            <div class="seg" id="listView">
+              <button data-v="latest" aria-pressed="true">Latest</button>
+              <button data-v="best" aria-pressed="false">Top 25</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Score</th><th>Moves</th><th>Reward</th><th>How it ended</th><th></th></tr></thead>
+              <tbody id="attempts"><tr><td colspan="6" class="muted">Press Start training. Each attempt shows up here, and you can replay any of them.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <details id="trainSettings">
+          <summary>Rewards, controls and brain settings</summary>
+          <div class="inner" id="trainForm"></div>
+        </details>
+
+        <details>
+          <summary>Save or load the brain</summary>
+          <div class="inner">
+            <div class="row">
+              <button class="btn small" id="brainSave">Save in this browser</button>
+              <button class="btn small ghost" id="brainLoad">Load saved brain</button>
+              <button class="btn small ghost" id="brainCopy">Copy brain as text</button>
+            </div>
+            <textarea id="brainText" aria-label="Brain as text" placeholder="Paste a copied brain here, then press Load from text"></textarea>
+            <div class="row"><button class="btn small ghost" id="brainPaste">Load from text</button><span class="muted" id="brainMsg"></span></div>
+          </div>
+        </details>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<!-- Settings sheet -->
+<div class="sheet-back" id="settingsBack" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="row" style="justify-content: space-between">
+      <h2 id="settingsTitle">Game settings</h2>
+      <button class="btn" id="settingsDone">Done</button>
+    </div>
+    <div class="section">
+      <div class="row" style="justify-content: space-between">
+        <h3 style="margin:0">Mode</h3>
+        <label class="check"><input type="checkbox" id="blender"> Blender: mix several modes</label>
+      </div>
+      <div class="modes" id="modeGrid"></div>
+      <div class="mode-desc" id="modeDesc"></div>
+    </div>
+    <div class="section"><h3>Apples</h3><div class="seg" id="setApples"></div><p class="muted">10, 20, 50 and 100 are extra options that Google's game doesn't have. If the board runs out of room, it holds as many apples as fit.</p></div>
+    <div class="section"><h3>Speed</h3><div class="seg" id="setSpeed"></div></div>
+    <div class="section"><h3>Board size</h3><div class="seg" id="setSize"></div></div>
+  </div>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/rl.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
