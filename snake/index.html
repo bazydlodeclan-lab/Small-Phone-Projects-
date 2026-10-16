@@ -109,7 +109,10 @@
         </div>
 
         <div class="section">
-          <h3>Progress</h3>
+          <div class="row" style="justify-content: space-between">
+            <h3 style="margin:0">Progress</h3>
+            <label class="muted">Show <select id="modeFilter" aria-label="Which mode to show"><option value="all">All modes</option></select></label>
+          </div>
           <div class="legend">
             <span><i class="dot" style="background: var(--series-dot)"></i>Each attempt</span>
             <span><i style="background: var(--series-1)"></i>Average of last 50</span>
@@ -118,6 +121,15 @@
           <div class="chart-wrap"><canvas id="chart" aria-label="Score of every attempt"></canvas><div class="tip" id="tip" hidden></div></div>
         </div>
 
+        <div class="section">
+          <h3>Progress by mode</h3>
+          <div class="table-wrap" style="max-height:220px">
+            <table>
+              <thead><tr><th>Mode</th><th>Board</th><th>Apples</th><th>Attempts</th><th>Wins</th><th>Avg score</th><th>Last 50 avg</th><th>Best</th></tr></thead>
+              <tbody id="modeTable"><tr><td colspan="8" class="muted">Train in different modes (change them with the gear button) to compare them here.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
         <div class="section">
           <div class="row" style="justify-content: space-between">
             <h3 style="margin:0">Every attempt</h3>
@@ -171,7 +183,7 @@
       <div class="modes" id="modeGrid"></div>
       <div class="mode-desc" id="modeDesc"></div>
     </div>
-    <div class="section"><h3>Apples</h3><div class="seg" id="setApples"></div></div>
+    <div class="section"><h3>Apples</h3><div class="seg" id="setApples"></div><p class="muted">10, 20, 50 and 100 are extra options that Google's game doesn't have. If the board runs out of room, it holds as many apples as fit.</p></div>
     <div class="section"><h3>Speed</h3><div class="seg" id="setSpeed"></div></div>
     <div class="section"><h3>Board size</h3><div class="seg" id="setSize"></div></div>
   </div>

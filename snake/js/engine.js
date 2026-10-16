@@ -27,6 +27,11 @@
     { id: 3, label: '3' },
     { id: 5, label: '5' },
     { id: 'dice', label: 'Dice' },
+    // Extra amounts (not in Google's game)
+    { id: 10, label: '10' },
+    { id: 20, label: '20' },
+    { id: 50, label: '50' },
+    { id: 100, label: '100' },
   ];
 
   // Every game mode
@@ -235,7 +240,7 @@
         if (!this.spawnUnit(c)) { ok = false; break; }
       }
       if (this.m.poison) {
-        const k = this.cfg.apples === 'dice' ? 1 : this.cfg.apples;
+        const k = this.cfg.apples === 'dice' ? 1 : Math.min(5, this.cfg.apples);
         while (this.poisons.length < k) {
           const c = this.pick(this.freeCells(this.occupiedGrid(), true));
           if (c < 0) break;

@@ -34,7 +34,7 @@
     acc: 0, last: performance.now(),
     ai: null, aiKind: 'perfect', aiSpeed: 1,
     trainer: null, trainCfg: RL.clone(RL.DEFAULTS), trainView: 'live', trainRunning: false,
-    replay: null, listView: 'latest', uiDirty: true, lastUi: 0,
+    replay: null, listView: 'latest', modeFilter: 'all', uiDirty: true, lastUi: 0,
   };
 
   const canvas = $('board'), ctx = canvas.getContext('2d');
@@ -196,20 +196,55 @@
 
   function onEpisode() { S.uiDirty = true; }
 
+  // Each attempt's mode, board and apple amount, so modes can be compared
+  const modeKey = c => [c.modes.slice().sort().join('+'), c.size, c.apples].join('|');
+  function modeLabel(k) {
+    const [modes, size, apples] = k.split('|');
+    return { mode: modeNames(modes.split('+')), size: E.SIZES[size].label, apples: E.APPLE_COUNTS.find(a => String(a.id) === apples).label };
+  }
+  const filtered = () => {
+    const eps = S.trainer ? S.trainer.episodes : [];
+    return S.modeFilter === 'all' ? eps : eps.filter(e => modeKey(e.cfg) === S.modeFilter);
+  };
+
+  function renderModeTable() {
+    const tr = S.trainer;
+    if (!tr || !tr.episodes.length) return;
+    const groups = new Map();
+    for (const e of tr.episodes) {
+      const k = modeKey(e.cfg);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(e);
+    }
+    const sel = $('modeFilter');
+    for (const k of groups.keys()) {
+      if ([...sel.options].some(o => o.value === k)) continue;
+      const l = modeLabel(k), o = document.createElement('option');
+      o.value = k; o.textContent = `${l.mode} · ${l.size} · ${l.apples}`; sel.appendChild(o);
+    }
+    const avg = a => (a.reduce((t, e) => t + e.score, 0) / a.length).toFixed(1);
+    $('modeTable').innerHTML = [...groups.entries()].map(([k, eps]) => {
+      const l = modeLabel(k);
+      return `<tr><td>${esc(l.mode)}</td><td>${l.size}</td><td class="num">${l.apples}</td><td class="num">${eps.length}</td><td class="num">${eps.filter(e => e.won).length}</td><td class="num">${avg(eps)}</td><td class="num">${avg(eps.slice(-50))}</td><td class="num">${Math.max(...eps.map(e => e.score))}</td></tr>`;
+    }).join('');
+  }
+  $('modeFilter').addEventListener('change', e => { S.modeFilter = e.target.value; S.lastUi = 0; trainUI(true); renderAttempts(true); });
+
   function trainUI(force) {
     const tr = S.trainer;
     const now = performance.now();
     if (!force && (!S.uiDirty || now - S.lastUi < 300)) return;
     S.uiDirty = false; S.lastUi = now;
     if (!tr) return;
-    const eps = tr.episodes;
+    const eps = filtered();
     const last = eps.slice(-50);
     $('trEp').textContent = eps.length;
-    $('trBest').textContent = tr.best;
+    $('trBest').textContent = eps.reduce((m, e) => Math.max(m, e.score), 0);
     $('trAvg').textContent = last.length ? (last.reduce((a, e) => a + e.score, 0) / last.length).toFixed(1) : '0';
     $('trEps').textContent = Math.round(tr.epsilon() * 100) + '%';
     drawChart();
     renderAttempts();
+    renderModeTable();
   }
 
   // Don't rebuild the list while the pointer is over it, so Watch buttons stay clickable
@@ -218,11 +253,11 @@
   $('attempts').addEventListener('pointerleave', () => { overList = false; });
 
   function renderAttempts(force) {
-    const tr = S.trainer, body = $('attempts');
-    if (!tr || !tr.episodes.length || (overList && !force)) return;
+    const body = $('attempts'), eps = filtered();
+    if (!eps.length || (overList && !force)) return;
     let list;
-    if (S.listView === 'best') list = tr.episodes.slice().sort((a, b) => b.score - a.score || a.steps - b.steps).slice(0, 25);
-    else list = tr.episodes.slice(-150).reverse();
+    if (S.listView === 'best') list = eps.slice().sort((a, b) => b.score - a.score || a.steps - b.steps).slice(0, 25);
+    else list = eps.slice(-150).reverse();
     body.innerHTML = list.map(e => `<tr><td class="num">${e.n}</td><td class="num">${e.score}</td><td class="num">${e.steps}</td><td class="num">${e.reward}</td><td>${esc(e.reason)}</td><td>${e.moves ? `<button data-ep="${e.n}">Watch</button>` : '<span class="muted">-</span>'}</td></tr>`).join('');
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -254,7 +289,7 @@
   // ---------- Chart: score of every attempt ----------
   let chartPts = null;
   function drawChart(hover) {
-    const c = $('chart'), tr = S.trainer;
+    const c = $('chart');
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const W = c.clientWidth, H = c.clientHeight;
     if (!W) return;
@@ -263,7 +298,7 @@
     x.scale(dpr, dpr);
     const css = getComputedStyle(document.documentElement);
     const col = n => css.getPropertyValue(n).trim();
-    const eps = tr ? tr.episodes : [];
+    const eps = filtered();
     const pad = { l: 34, r: 10, t: 10, b: 22 };
     const N = Math.max(eps.length, 10);
     let maxY = 5;
@@ -279,12 +314,12 @@
       x.textAlign = 'right'; x.fillText(String(Math.round(v)), pad.l - 6, Y(v) + 4);
     }
     x.textAlign = 'center';
-    for (const i of [1, Math.round(N / 2), N]) x.fillText(String(i), Math.min(W - pad.r - 8, Math.max(pad.l + 4, X(i))), H - 6);
+    for (const i of [1, Math.round(N / 2), N]) x.fillText(String(eps[i - 1] ? eps[i - 1].n : i), Math.min(W - pad.r - 8, Math.max(pad.l + 4, X(i))), H - 6);
     if (!eps.length) { x.fillText('Attempts will appear here', W / 2, H / 2); chartPts = null; return; }
     // each attempt
     x.fillStyle = col('--series-dot'); x.globalAlpha = eps.length > 400 ? 0.35 : 0.7;
     const r = eps.length > 400 ? 1.5 : 2.5;
-    for (const e of eps) { x.beginPath(); x.arc(X(e.n), Y(e.score), r, 0, 7); x.fill(); }
+    eps.forEach((e, i) => { x.beginPath(); x.arc(X(i + 1), Y(e.score), r, 0, 7); x.fill(); });
     x.globalAlpha = 1;
     // average of last 50 + best so far
     const avg = [], best = [];
@@ -332,7 +367,7 @@
     tip.hidden = false;
     tip.style.left = Math.min(rect.width - 60, Math.max(60, chartPts.X(best))) + 'px';
     tip.style.top = chartPts.Y(chartPts.best[i]) + 'px';
-    tip.textContent = `Attempt ${best}: score ${eps[i].score} · avg ${chartPts.avg[i].toFixed(1)} · best ${chartPts.best[i]}`;
+    tip.textContent = `Attempt ${eps[i].n}: score ${eps[i].score} · avg ${chartPts.avg[i].toFixed(1)} · best ${chartPts.best[i]}`;
   });
   $('chart').addEventListener('pointerleave', () => { $('tip').hidden = true; drawChart(); });
 
@@ -400,14 +435,16 @@
     $('attempts').innerHTML = '<tr><td colspan="6" class="muted">Press Start training. Each attempt shows up here, and you can replay any of them.</td></tr>';
     trainUIReset();
   }
-  function trainUIReset() { $('trEp').textContent = '0'; $('trBest').textContent = '0'; $('trAvg').textContent = '0'; $('trEps').textContent = '100%'; drawChart(); }
+  function trainUIReset() {
+    $('modeTable').innerHTML = '<tr><td colspan="8" class="muted">Train in different modes (change them with the gear button) to compare them here.</td></tr>';
+    $('modeFilter').innerHTML = '<option value="all">All modes</option>'; S.modeFilter = 'all'; $('trEp').textContent = '0'; $('trBest').textContent = '0'; $('trAvg').textContent = '0'; $('trEps').textContent = '100%'; drawChart(); }
 
   // ---------- Save / load the brain ----------
   function brainJSON() {
     const tr = ensureTrainer();
     return {
       agent: tr.agent.toJSON(), cfg: tr.cfg,
-      history: tr.episodes.map(e => [e.score, e.steps, e.reward, e.won ? 1 : 0]),
+      history: tr.episodes.map(e => [e.score, e.steps, e.reward, e.won ? 1 : 0, e.cfg]),
     };
   }
   function loadBrain(j) {
@@ -415,7 +452,7 @@
     const tr = new RL.Trainer(S.trainCfg, gameCfg());
     tr.agent = RL.Agent.fromJSON(j.agent);
     tr.agent.cfg.learn = RL.clone(S.trainCfg.learn);
-    tr.episodes = (j.history || []).map((h, i) => ({ n: i + 1, score: h[0], steps: h[1], reward: h[2], won: !!h[3], reason: h[3] ? 'Won!' : 'Loaded', moves: null, eps: 0 }));
+    tr.episodes = (j.history || []).map((h, i) => ({ n: i + 1, score: h[0], steps: h[1], reward: h[2], won: !!h[3], cfg: h[4] || gameCfg(), reason: h[3] ? 'Won!' : 'Loaded', moves: null, eps: 0 }));
     tr.best = tr.episodes.reduce((m, e) => Math.max(m, e.score), 0);
     tr.startEpisode();
     S.trainer = tr;
