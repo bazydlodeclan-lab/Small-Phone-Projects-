@@ -26,8 +26,12 @@ The finished game has 4 levels, played in this order:
 - Assists: throttle assist and brake assist are on by default (front wheel stays down).
 - Owner request 2026-10-12 (round 2): a hard landing NEVER throws the rider off any more
   (`CONFIG.hardLandingCrash = false`; head/torso touching the ground and falling out of the
-  level still crash). Levels are about 2x longer (700-900 m, 50-80 s) with whoops, rhythm
-  sections, tabletops, doubles, hills and ONE freestyle ramp each (a backflip is possible).
+  level still crash). Levels were first made about 2x longer, then (owner request 2026-10-22: "about 5x
+  longer, bigger, more features") rebuilt at about 4000 m each (5-6 minutes of riding, 17-28
+  checkpoints) with chapters of whoops, rhythm sections, tabletops, doubles, step-ups, big hills
+  (up to 6 m) and FOUR freestyle ramps each (a backflip is possible). Level 2 has 6 pumpkin
+  patches. The ghost is recorded every 4th step so a 5-minute run still fits in localStorage.
+  Levels are built from helper functions inside each level's IIFE in `js/levels.js`.
   The camera is zoomed out (900 px of height on screen) and looks lower when the bike is high,
   so the ground stays in view.
 
