@@ -615,6 +615,25 @@ var Bike = (function () {
     return (r.x - peg.x) * -Math.sin(a) + (r.y - peg.y) * Math.cos(a);
   }
 
+  // Landing assist (owner request: landing hard at a slight angle must not end the ride).
+  // For half a second after a landing, a gentle spring-and-damper torque eases the bike level
+  // with the ground under it, so a hard landing on one wheel does not tip it over its nose.
+  // Not used if the bike is nearly upside down (a real crash).
+  function landing(bike) {
+    if (!bike.hips || !CONFIG.landingAssist) return;
+    var air = bike.rearAir >= CONTACT_GRACE_STEPS && bike.frontAir >= CONTACT_GRACE_STEPS;
+    if (air) { bike.airSteps = (bike.airSteps || 0) + 1; return; }
+    if ((bike.airSteps || 0) > 6) bike.landSteps = 36; // just landed after a real jump
+    bike.airSteps = 0;
+    if (!(bike.landSteps > 0)) return;
+    bike.landSteps--;
+    var a = bike.chassis.getAngle(), err = a - bike.groundAngle;
+    err = Math.atan2(Math.sin(err), Math.cos(err));
+    if (Math.abs(err) > 1.8) return;
+    var T = -(CONFIG.landingAssist * 4500) * err - 450 * bike.chassis.getAngularVelocity();
+    bike.chassis.applyTorque(Math.max(-6000, Math.min(6000, T)), true);
+  }
+
   function updateContacts(bike) {
     if (bike.hips) {
       bike.crouch = crouchOf(bike.chassis.getAngle(), bike.chassis.getWorldPoint(v(GEO.footpeg)), bike.rider.getPosition());
@@ -758,6 +777,7 @@ var Bike = (function () {
     remove: remove,
     control: control,
     suspension: suspension,
+    landing: landing,
     resistance: resistance,
     compression: compression,
     letGo: letGo,

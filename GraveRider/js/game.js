@@ -312,6 +312,7 @@ var Game = (function () {
     loopPhases();
     flipAssistGravity(bike);
     Bike.suspension(bike);
+    Bike.landing(bike);
     Bike.resistance(bike, state.gravity);
     if (state.mode === "playing" || state.mode === "ready" || state.mode === "finished") Bike.tyreGrip(bike);
     if (state.mode === "playing") Bike.control(bike, input);
