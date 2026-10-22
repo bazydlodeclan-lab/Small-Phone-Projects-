@@ -285,6 +285,23 @@ var LEVELS = [
         L.lip(Math.round(h * 6), -h); L.flat(500); L.ramp(80, Math.round(h * 0.2));
         L.ramp(Math.round(h * 24), Math.round(h * 5.2)); L.ease(Math.round(h * 9), Math.round(h * 1.0));
       }
+      // steep landing: a run-out after it, then a climb back up so the track keeps its height
+      function land(deg, drop) {
+        L.steep(deg, drop); L.flat(600); L.bump(Math.round(drop * 1.8), -Math.round(drop * 0.4)); L.flat(200);
+      }
+      // BIG jumps land on a steep downhill (45-70 degrees)
+      function tabS(h, top, deg, drop) {
+        due();
+        L.lip(Math.round(h * 7.6 + 80), -h); L.flat(top || 640); land(deg, drop);
+      }
+      function dblS(h, gap, deg, drop) {
+        due();
+        L.lip(Math.round(h * 7 + 40), -h); L.flat(120 + gap * 2); land(deg, drop);
+      }
+      function stepS(h, deg, drop) {
+        due();
+        L.lip(Math.round(h * 6), -h); L.flat(500); land(deg, drop);
+      }
       function hill(w, h) { due(); L.bump(w, -h); L.flat(260); L.bump(w, h); L.flat(260); }
   
       L.speed(45);
@@ -310,7 +327,7 @@ var LEVELS = [
       L.hills(2000, 30, 1000); L.flat(300);
       due();
       L.whoops(18, 240, 24); L.flat(500);               // the big whoops section
-      tab(90, 640); L.flat(400);
+      tabS(90, 640, 45, 1300); L.flat(400);
       L.whoops(8, 280, 26); L.flat(300);
       hill(2200, 280);
       L.hills(1600, 26, 800); L.flat(300);
@@ -325,18 +342,18 @@ var LEVELS = [
       small(1); small(1); small(1.1); small(1.2);       // rhythm: doubles in a row
       L.flat(300);
       due(); dbl(80, 120); L.flat(400);
-      due(); dbl(96, 150); L.flat(400);
-      tab(100, 700); L.flat(400);
+      dblS(96, 150, 45, 1300); L.flat(400);
+      tabS(100, 700, 45, 1300); L.flat(400);
       cp();
       small(1); small(1.2); small(1.3);                 // triple-ish rhythm
       L.flat(300);
-      due(); dbl(110, 190); L.flat(500);
+      dblS(110, 190, 50, 1400); L.flat(500);
       L.whoops(12, 240, 22); L.flat(400);
-      step(100); L.flat(400);
-      due(); tab(110, 700); L.flat(400);
+      stepS(100, 50, 1400); L.flat(400);
+      tabS(110, 700, 50, 1400); L.flat(400);
       L.hills(2000, 32, 1000); L.flat(300);
       due(); L.whoops(10, 260, 24); L.flat(400);
-      dbl(90, 150); L.flat(400);
+      dblS(90, 150, 45, 1300); L.flat(400);
   
       // ---- CHAPTER 4: hills chapter ----
       due();
@@ -344,7 +361,7 @@ var LEVELS = [
       L.hills(2000, 30, 1000); L.flat(300);
       due();
       L.bump(2600, -380); L.flat(400);                  // big hill (6 m)
-      tab(100, 700);                                    // a tabletop on the summit side
+      tabS(100, 700, 45, 1300);                          // a tabletop on the summit side
       L.flat(300);
       L.bump(2600, 330); L.flat(400);
       due();
@@ -353,7 +370,7 @@ var LEVELS = [
       cp();
       L.bump(2000, 180); L.flat(300); L.bump(2000, 150); L.flat(300);
       due();
-      dbl(100, 160); L.flat(400);
+      dblS(100, 160, 50, 1400); L.flat(400);
       hill(2800, 340);
       L.flat(200);
       cp();
@@ -363,18 +380,18 @@ var LEVELS = [
       // ---- CHAPTER 5: big jumps, freestyle finale ----
       due();
       L.whoops(10, 240, 22); L.flat(400);
-      tab(120, 720); L.flat(400);
-      due(); dbl(115, 200); L.flat(400);
-      step(120); L.flat(400);
+      tabS(120, 720, 55, 1500); L.flat(400);
+      due(); dblS(115, 200, 55, 1500); L.flat(400);
+      stepS(120, 55, 1500); L.flat(400);
       small(1.3); small(1.3); small(1.4);
       L.flat(300);
       due(); L.hills(2400, 34, 1200); L.flat(300);
-      tab(125, 740); L.flat(400);
+      tabS(125, 740, 60, 1600); L.flat(400);
       due();
-      tab(130, 760); L.flat(400);
+      tabS(130, 760, 60, 1600); L.flat(400);
       L.whoops(14, 240, 24); L.flat(400);
       hill(2600, 330);
-      due(); dbl(130, 220); L.flat(500);
+      due(); dblS(130, 220, 65, 1600); L.flat(500);
       L.hills(1600, 26, 800); L.flat(300);
       cp();
       L.freestyle(1);                                   // freestyle ramp 4: the finale
@@ -411,14 +428,28 @@ var LEVELS = [
         if (dy > 60) { L.bump(dy * 7, -dy); L.flat(300); }
       }
       // Tabletop with a lip h px high (62..130), landing scaled to match
-      function tableJump(h) {
+      function tableJump(h, deg, drop) {
         var k = h - 62;
-        L.table(600 + k * 6, -h, 640 + k * 6, 2300 + k * 30, 560 + k * 5, 900 + k * 6, 100 + k * 0.5);
+        if (!deg) { L.table(600 + k * 6, -h, 640 + k * 6, 2300 + k * 30, 560 + k * 5, 900 + k * 6, 100 + k * 0.5); return; }
+        bigCheckpoint();
+        L.lip(600 + k * 6, -h); L.flat(640 + k * 6); L.ramp(80, h * 0.17);
+        L.steep(deg, drop); steepRunOut();
+      }
+      // Big jumps land on a steep downhill; a checkpoint comes before each one
+      function bigCheckpoint() { if (L.x() - lastCp > 200) { L.checkpoint(); lastCp = L.x(); } L.flat(200); }
+      // Flat run-out after a steep landing, then a climb back up so the level keeps its height
+      function steepRunOut() {
+        L.flat(800);
+        var dy = L.y() - 300;
+        if (dy > 60) { L.bump(dy * 3.5, -dy); }
+        L.flat(400);
       }
       // Double jump with a take-off h px high
-      function double(h, gapK) {
+      function double(h, gapK, deg, drop) {
         var k = h - 70, g = gapK || 1;
+        if (deg) bigCheckpoint();
         L.lip(560 + k * 7, -h); L.ramp(100 * g, h * 0.43); L.flat(100 * g); L.ramp(110 * g, -h * 0.57);
+        if (deg) { L.steep(deg, drop); steepRunOut(); return; }
         L.ramp(80, 10); L.ramp(1600 + k * 25, 380 + k * 4); L.ease(800 + k * 6, 80 + k * 0.5);
       }
       // Rhythm section: n doubles in a row, each s times the size of the small one
@@ -431,9 +462,11 @@ var LEVELS = [
         }
       }
       // A triple: three pillars in a row, then a long landing
-      function triple(h) {
+      function triple(h, deg, drop) {
+        if (deg) bigCheckpoint();
         L.lip(540 + h * 2, -h);
         for (var i = 0; i < 3; i++) { L.ramp(280, h * 0.45); L.flat(60); L.ramp(400, -h * 0.5); L.flat(i < 2 ? 140 : 40); }
+        if (deg) { L.steep(deg, drop); steepRunOut(); return; }
         L.ramp(80, 10); L.ramp(2200 + h * 10, 500 + h * 3); L.ease(900, 90);
       }
       // Hill with a flat top. h up to ~380 px (6 m); no pad is ever put on it.
@@ -465,28 +498,28 @@ var LEVELS = [
       L.speed(50);
       L.whoops(18, 250, 26); gap();                                         // one very long whoops section
       L.ramp(500, -110); L.flat(900); L.ramp(500, -110); L.flat(900); gap(); // step-ups
-      tableJump(90); gap();
+      tableJump(90, 45, 1200); gap();
       patch("BIG BOUNCE", 0.85, 90, 2300); L.speed(52); gap();
       climb(700);
       bigHill(260, 2600, 500); gap();
       rhythm(4, 1.1); gap();
       L.hills(2400, 30, 900); gap();
-      double(95, 1.1); gap();
+      double(95, 1.1, 45, 1200); gap();
       climb(700);
       L.freestyle(1); gap();                                                // freestyle 2
   
       // ===== CHAPTER 3: hills, rhythm and the triple =====
       L.speed(52);
       bigHill(330, 3000, 500); gap();
-      triple(90); gap();
+      triple(90, 50, 1300); gap();
       climb(700);
       L.whoops(14, 240, 24); gap();
       patch("GOURD BOUNCE", 0.85, 90, 2300); L.speed(54); gap();
-      tableJump(110); gap();
+      tableJump(110, 55, 1500); gap();
       climb(700);
       bigHill(300, 2800, 400); gap();
       rhythm(4, 1.25); gap();
-      double(110, 1.2); gap();
+      double(110, 1.2, 55, 1500); gap();
       climb(700);
       patch("SQUASH PIT", 0.85, 95, 2300); L.speed(54); gap();
       L.freestyle(1); gap();                                                // freestyle 3
@@ -495,18 +528,18 @@ var LEVELS = [
       L.speed(55);
       L.whoops(20, 250, 30); gap(11500);                                         // the longest whoops
       L.ramp(450, -120); L.flat(700); L.ramp(450, -120); L.flat(700); L.ramp(450, 130); L.flat(700); L.ramp(450, 120); gap(11500); // step-up, step-up, step-down, step-down
-      tableJump(125); gap(11500);
+      tableJump(125, 60, 1800); gap(11500);
       climb(700);
       bigHill(380, 3200, 500); gap(11500);
-      triple(105); gap(11500);
+      triple(105, 60, 1800); gap(11500);
       patch("HARVEST HOP", 0.85, 100, 2400); L.speed(55); gap(11500);
       rhythm(4, 1.3); gap(11500);
       climb(700);
-      tableJump(130); gap(11500);
-      double(120, 1.25); gap(11500);
+      tableJump(130, 65, 2000); gap(11500);
+      double(120, 1.25, 70, 2200); gap(11500);
       L.whoops(12, 240, 26); gap(11500);
       patch("GREAT PUMPKIN", 0.85, 105, 2400); L.speed(55); gap(11500);          // big finale patch
-      L.ramp(3600, 700); L.ease(900, 100); L.flat(300); L.checkpoint(); L.flat(300); // long downhill, then a checkpoint
+      L.ramp(3600, 700); L.ease(900, 100); L.flat(900); L.checkpoint(); L.flat(900); // long downhill, then a checkpoint
       L.freestyle(1);                                                       // freestyle 4: the finale
       L.flat(400);
       return L.build({
@@ -538,6 +571,23 @@ var LEVELS = [
       function doubleJ(h, gap, land) {
         L.lip(540 + h * 1.3, -h); L.ramp(160, h * 0.9); L.flat(gap); L.ramp(220, -h * 0.75);
         L.ramp(80, 10); L.ramp(land, Math.round(land * 0.2)); L.ease(1400, Math.round(land * 0.036));
+      }
+      // run-out after a steep landing: flat, then a long climb that slows the rider and gives the height back
+      function runOut(drop) { L.flat(700); L.bump(Math.round(drop * 1.8), -Math.round(drop * 0.5)); L.flat(300); }
+      // BIG tabletop: lip, flat top, then straight onto a steep landing (deg degrees, drop px)
+      function steepTable(h, top, deg, drop) {
+        L.lip(560 + h * 1.2, -h); L.flat(top); L.steep(deg, drop); runOut(drop);
+      }
+      // BIG double: lip, gap, face, then the steep landing right behind the face
+      function steepDouble(h, gap, deg, drop) {
+        L.lip(540 + h * 1.3, -h); L.ramp(160, h * 0.9); L.flat(gap); L.ramp(220, -h * 0.75);
+        L.ramp(80, 10); L.steep(deg, drop); runOut(drop);
+      }
+      // BIG triple: three gaps, then the steep landing
+      function steepTriple(h, deg, drop) {
+        L.lip(540 + h * 1.3, -h); L.ramp(160, h * 0.9); L.flat(300); L.ramp(220, -h * 0.5);
+        L.ramp(80, 5); L.flat(300); L.ramp(220, -h * 0.5); L.ramp(80, 5); L.flat(300); L.ramp(220, -h * 0.5);
+        L.ramp(80, 10); L.steep(deg, drop); runOut(drop);
       }
       // step-up: climb a ledge and ride on; step-down: a long smooth drop
       function stepUp(dy) { L.bump(900, -dy); L.flat(500); }
@@ -580,12 +630,12 @@ var LEVELS = [
       // ===== CHAPTER 3: big crater hills and tabletops =====
       cp(300, 400);
       hill(300, 2400, 800); cp();
-      tableJ(95, 1000, 1.25); cp();
+      steepTable(95, 1000, 45, 2500); cp();
       L.whoops(12, 400, 54); L.flat(400); cp();
       doubleJ(80, 420, 4200); cp(300, 400);
       stepUp(180); L.hills(2400, 60, 1200); cp();
       hill(380, 3000, 600); cp();
-      tableJ(110, 1100, 1.4); cp();
+      steepTable(110, 1100, 50, 2800); cp();
       L.freestyle(2.4); L.flat(400);
   
       // ===== CHAPTER 4: the finale. Biggest jumps, a triple, the last freestyle =====
@@ -593,10 +643,10 @@ var LEVELS = [
       L.whoops(14, 400, 56); L.flat(400); cp();
       rhythm([70, 85, 100]); cp();
       stepDown(220); L.hills(2800, 70, 1400); cp();
-      tableJ(125, 1100, 1.5); cp();
-      triple(90); cp();
+      steepTable(125, 1100, 55, 3200); cp();
+      steepTriple(90, 55, 3200); cp();
       hill(300, 2400, 600); cp();
-      doubleJ(110, 480, 4600); cp(300, 400);
+      steepDouble(110, 480, 50, 3000); cp(300, 400);
       L.whoops(10, 420, 56); L.flat(400); cp();
       L.freestyle(2.5);
       L.flat(400);
@@ -633,6 +683,17 @@ var LEVELS = [
         L.lip(Math.round(600 + (k - 1) * 300), -h); L.ramp(Math.round(120 * k), Math.round(50 * k)); L.flat(Math.round(110 * k));
         L.ramp(Math.round(110 * k), Math.round(-45 * k)); L.ramp(80, 10); L.ramp(Math.round(1800 * k), Math.round(420 * k)); L.ease(Math.round(900 * k), Math.round(90 * k));
       }
+      function land(deg, drop) {               // steep landing, then a flat and a gentle climb to slow the bike
+        L.steep(deg, drop); L.flat(700); L.bump(2400, -250); L.flat(400);
+      }
+      function tblS(h, deg, drop, topExtra) { // big tabletop with a steep landing
+        L.lip(Math.round(7.5 * h + 100), -h); L.flat(640 + (h - 66) * 3 + (topExtra || 0)); land(deg, drop, h);
+      }
+      function dblS(h, deg, drop) {            // big double with a steep landing
+        var k = h / 80;
+        L.lip(Math.round(600 + (k - 1) * 300), -h); L.ramp(Math.round(120 * k), Math.round(50 * k)); L.flat(Math.round(110 * k));
+        land(deg, drop);
+      }
       function rhythm(n, s, gap) {             // n doubles in a row, each a bit bigger
         for (var i = 0; i < n; i++) {
           var k = s + 0.12 * i;
@@ -665,43 +726,43 @@ var LEVELS = [
       chk(); L.freestyle(1); L.flat(400);                         // freestyle 1
   
       // ---- Chapter 2: rhythm and loops ----
-      chk(); tbl(90); L.flat(600);
+      chk(); tblS(90, 45, 1200); L.flat(600);
       L.hills(3200, 34, 1000); L.flat(500);
       hill(220, 1800);
       bigLoop();                                                  // loop 2
       chk(); rhythm(4, 1.1, 120); L.flat(600);
       step(60); step(80);
       L.whoops(16, 240, 22); L.flat(500);
-      chk(); dbl(100); L.flat(500);
+      chk(); dblS(100, 50, 1400); L.flat(500);
       hill(340, 2600);
       bigLoop();                                                  // loop 3
-      chk(); tbl(100); L.flat(600);
+      chk(); tblS(100, 55, 1600); L.flat(600);
       L.whoops(10, 220, 20); L.flat(600);
       chk(); L.freestyle(1); L.flat(400);                         // freestyle 2
   
       // ---- Chapter 3: big hills, doubles, the long whoops ----
       chk(); hill(380, 2800);
-      chk(); dbl(110); L.flat(500);
+      chk(); dblS(110, 55, 1600); L.flat(500);
       L.hills(2400, 30, 800); L.flat(500);
       bigLoop(3200);                                              // loop 4 (long flat: whoops follow)
       chk(); L.whoops(20, 240, 24); L.flat(600);
-      chk(); tbl(120); L.flat(600);
+      chk(); tblS(120, 60, 1700); L.flat(600);
       step(70); step(90);
       chk(); rhythm(3, 1.15, 140); L.flat(600);
       hill(300, 2400);
-      chk(); dbl(120); L.flat(500);
+      chk(); dblS(120, 60, 1700); L.flat(500);
       bigLoop();                                                  // loop 5
       chk(); L.freestyle(1); L.flat(400);                         // freestyle 3
   
       // ---- Chapter 4: the finale ----
-      chk(); tbl(130); L.flat(600);
+      chk(); tblS(130, 65, 1900); L.flat(600);
       hill(300, 2600);
       L.whoops(14, 240, 24); L.flat(500);
       chk(); rhythm(4, 1.1, 120); L.flat(600);
       hill(380, 3000);
-      chk(); dbl(130); L.flat(500);
+      chk(); dblS(130, 65, 1900); L.flat(500);
       step(80); step(100);
-      chk(); tbl(110, 150); L.flat(600);
+      chk(); tblS(110, 70, 2000, 150); L.flat(600);
       L.hills(2400, 30, 800); L.flat(500);
       bigLoop(3200);                                              // loop 6 (long flat: whoops follow)
       L.whoops(10, 240, 22); L.flat(600);
