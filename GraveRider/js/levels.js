@@ -203,12 +203,21 @@ function LevelBuilder() {
       b.speed(takeoffKmh, true, x0 - 100, true);
       b.add(Shapes.kicker(x0, y0, x0 + 300, y0 - 140, 14));
       b.add([{ x: x0 + 304, y: y0 - 140 }, { x: x0 + 310, y: y0 }]);
-      b.flat(1500 * gap);
-      b.add(Shapes.curve(cx, cy, cx + 320, cy - 120, 10)); // landing ramp face (about 20 deg, rideable)
-      b.flat(60);
-      b.add(Shapes.curve(cx, cy, cx + 1100 * gap + 700, cy + 120, 24)); // long downhill landing
+      b.flat(1300 * gap);
+      b.add(Shapes.curve(cx, cy, cx + 160, cy - 80, 8)); // landing ramp face (rideable if you come up short)
+      b.flat(40);
+      b.steep(50, 1500 * gap);                          // steep landing: the bike lands on a 50 degree downhill
       b.flat(300);
       b.speed(before);
+    },
+    // Steep landing zone (owner request: big jumps land on a 45-70 degree downhill, like a real
+    // motocross landing ramp): flat curves into a straight slope of `deg` degrees that drops
+    // `drop` px in all, then curves back out to flat. Put it right after the gap or top of a jump.
+    steep: function (deg, drop) {
+      var t = Math.tan(deg * Math.PI / 180), a = 0.05 * drop, m = 0.75 * drop, c = 0.2 * drop;
+      b.add(Shapes.kicker(cx, cy, cx + 2 * a / t, cy + a, 12)); // curving down into the slope
+      b.ramp(m / t, m);                                          // the straight steep slope
+      b.ease(2 * c / t, c);                                      // curving out to flat
     },
     // Where the automated test rider should aim for a speed (km/h) from here on
     speed: function (kmh, flip, x, fixed) { // fixed: the test rider keeps this speed at 0.9x / 1.1x too
