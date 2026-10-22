@@ -639,7 +639,7 @@ var Bike = (function () {
     bike.frontOnGround = bike.frontAir < CONTACT_GRACE_STEPS;
     bike.bodyOnGround = touchesGround(bike.chassis);
     // The rider's head or body hitting the ground = crash
-    bike.riderHit = touchesGround(bike.rider, ["head", "torso"]);
+    bike.riderHit = touchesGround(bike.rider, ["head"]); // only the head touching the ground is a crash (the body brushing it is not)
   }
 
   // =====================================================

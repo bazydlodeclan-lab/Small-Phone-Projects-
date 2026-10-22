@@ -25,7 +25,7 @@ The finished game has 4 levels, played in this order:
   Levels are real motocross layouts without turns: whoops, tabletops, doubles, rollers.
 - Assists: throttle assist and brake assist are on by default (front wheel stays down).
 - Owner request 2026-10-12 (round 2): a hard landing NEVER throws the rider off any more
-  (`CONFIG.hardLandingCrash = false`; head/torso touching the ground and falling out of the
+  (`CONFIG.hardLandingCrash = false`; only the head touching the ground and falling out of the
   level still crash). Levels were first made about 2x longer, then (owner request 2026-10-22: "about 5x
   longer, bigger, more features") rebuilt at about 4000 m each (5-6 minutes of riding, 17-28
   checkpoints) with chapters of whoops, rhythm sections, tabletops, doubles, step-ups, big hills
@@ -175,8 +175,9 @@ Load order in `index.html` matters: planck → config → levels → bike → th
   ramp ~15 m away and a long landing. The test track's double is too short: the
   speed a flip needs overshoots its landing onto the flat (too hard a landing). The rider leans back
   automatically when braking hard.
-- Crash = rider's head or torso touching the ground, falling below the level, or (only if `hardLandingCrash` is on, default OFF) a landing over `riderMaxG`, or
-  falling below the level.
+- Crash = the rider's HEAD touching the ground (owner request 2026-10-23: the body brushing the
+  ground, or the wheels landing at different times, is NOT a crash), falling below the level, or
+  (only if `hardLandingCrash` is on, default OFF) a landing over `riderMaxG`.
   On a crash the hip joint is destroyed so the rider falls off, and 1 s later the
   bike restarts at the last checkpoint. The clock keeps running.
 - Race flow (`state.mode`): ready (clock at 0, rider holds the brakes) → playing on
