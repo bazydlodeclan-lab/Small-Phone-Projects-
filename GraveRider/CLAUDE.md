@@ -35,8 +35,8 @@ The finished game has 4 levels, played in this order:
   Owner request 2026-10-23: BIG jumps (lip about 90 px / 1.4 m or more, and the freestyle ramps)
   land on STEEP downhills, 45-70 degrees (`L.steep(deg)` in the builder; owner follow-up 2026-10-24: it must be where you
   ACTUALLY land and round out gradually, not a straight wall: a head that starts at `deg` and eases
-  to 11 degrees over ~22 m, a gentle tail of ~56 m (riders who hold the throttle fly 60-75 m and land
-  there) and a ~25 m round-out; the old `drop` argument is ignored). Levels end far lower than they start; the fall limit is
+  to 11 degrees over ~22 m, a gentle tail of ~75 m (riders who hold the throttle fly 60-75 m and land
+  there) and a ~28 m round-out; the old `drop` argument is ignored). Levels end far lower than they start; the fall limit is
   set below the lowest ground point (`lowestY()` in `L.build`), not below the end of the level. Landing assist (`CONFIG.landingAssist`,
   `Bike.landing`): for 0.6 s after a jump a spring-damper torque eases the bike level with the
   ground so a hard landing on one wheel does not tip it over its nose.
@@ -184,7 +184,8 @@ Load order in `index.html` matters: planck → config → levels → bike → th
   speed a flip needs overshoots its landing onto the flat (too hard a landing). The rider leans back
   automatically when braking hard.
 - Crash = the rider's HEAD touching the ground (owner request 2026-10-23: the body brushing the
-  ground, or the wheels landing at different times, is NOT a crash), falling below the level, or
+  ground, or the wheels landing at different times, is NOT a crash; also a slow head brush under 6 m/s
+  lasting under 10 steps does not count, `bike.headSteps` / `headHard` in `Bike.updateContacts`), falling below the level, or
   (only if `hardLandingCrash` is on, default OFF) a landing over `riderMaxG`.
   On a crash the hip joint is destroyed so the rider falls off, and 1 s later the
   bike restarts at the last checkpoint. The clock keeps running.
