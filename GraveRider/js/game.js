@@ -114,7 +114,7 @@ var Game = (function () {
   // Every 2nd physics step the position of each part is recorded;
   // playback blends between recorded frames.
   // ---------------------------------------------------
-  var GHOST_EVERY = 2;
+  var GHOST_EVERY = 4; // every 4th step (15 per second) keeps a 5-minute ghost small enough to save
 
   function round3(x) { return Math.round(x * 1000) / 1000; }
 
