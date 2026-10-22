@@ -219,12 +219,12 @@ function LevelBuilder() {
     // rounds out gradually, like a real motocross landing, and it must be where you ACTUALLY
     // land, also for riders who hold the throttle and fly 70-90 m). Three parts, all smooth:
     //  1. head (about 22 m): starts at `deg` degrees right at the crest and eases to a gentle 11 degrees
-    //  2. tail (about 56 m): a long gentle downhill where the fast flyers come down
-    //  3. round-out (about 25 m): flattens smoothly to level ground
-    // About 26-32 m of height is lost in all (more for steeper starts). Put it right after
+    //  2. tail (about 75 m): a long gentle downhill where the fast flyers come down
+    //  3. round-out (about 28 m): flattens smoothly to level ground
+    // About 30-36 m of height is lost in all (more for steeper starts). Put it right after
     // the gap or top of a jump. (The old `drop` argument is no longer used.)
     steep: function (deg) {
-      var s0 = Math.tan(deg * Math.PI / 180), sT = 0.2, H = 1400, T = 3600, R = 1600, pts2 = [], x = cx, y = cy, i, n = 20;
+      var s0 = Math.tan(deg * Math.PI / 180), sT = 0.2, H = 1400, T = 4800, R = 1800, pts2 = [], x = cx, y = cy, i, n = 20;
       for (i = 1; i <= n; i++) { // head: slope eases from s0 down to sT
         var u = i / n, sl = sT + (s0 - sT) * (1 - u) * (1 - u);
         x += H / n; y += sl * H / n; pts2.push({ x: x, y: y });

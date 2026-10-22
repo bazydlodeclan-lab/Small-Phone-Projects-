@@ -658,7 +658,15 @@ var Bike = (function () {
     bike.frontOnGround = bike.frontAir < CONTACT_GRACE_STEPS;
     bike.bodyOnGround = touchesGround(bike.chassis);
     // The rider's head or body hitting the ground = crash
-    bike.riderHit = touchesGround(bike.rider, ["head"]); // only the head touching the ground is a crash (the body brushing it is not)
+    // Only the head HITTING or PLANTED on the ground is a crash: a slow brush (under 6 m/s) that
+    // lasts less than 0.17 s while rolling out of a landing does not count, nor does the body touching.
+    var headTouch = touchesGround(bike.rider, ["head"]), rv2 = bike.rider.getLinearVelocity();
+    if (headTouch) {
+      if (!bike.headSteps) bike.headHard = (bike.headSpeedPrev || 0) > 6;
+      bike.headSteps = (bike.headSteps || 0) + 1;
+    } else { bike.headSteps = 0; bike.headHard = false; }
+    bike.headSpeedPrev = Math.hypot(rv2.x, rv2.y);
+    bike.riderHit = headTouch && (bike.headHard || bike.headSteps >= 10);
   }
 
   // =====================================================
