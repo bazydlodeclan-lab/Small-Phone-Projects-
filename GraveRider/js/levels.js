@@ -171,6 +171,11 @@ var TEST_TRACK =
 function LevelBuilder() {
   var pts = [{ x: -600, y: 0 }], cp = [], zones = [], terrain = [], loops = 0, rides = [];
   var cx = -600, cy = 0;
+  function lowestY() { // lowest ground point (y grows downward): the fall limit sits below the whole track
+    var m = cy;
+    terrain.concat([pts]).forEach(function (piece) { (piece.points || piece).forEach(function (p) { if (p.y > m) m = p.y; }); });
+    return m;
+  }
   var b = {
     add: function (list) { // list = absolute points; continue from its last point
       list.forEach(function (p) { if (Math.abs(p.x - cx) > 0.01 || Math.abs(p.y - cy) > 0.01) pts.push(p); });
@@ -210,14 +215,26 @@ function LevelBuilder() {
       b.flat(300);
       b.speed(before);
     },
-    // Steep landing zone (owner request: big jumps land on a 45-70 degree downhill, like a real
-    // motocross landing ramp): flat curves into a straight slope of `deg` degrees that drops
-    // `drop` px in all, then curves back out to flat. Put it right after the gap or top of a jump.
-    steep: function (deg, drop) {
-      var t = Math.tan(deg * Math.PI / 180), a = 0.05 * drop, m = 0.75 * drop, c = 0.2 * drop;
-      b.add(Shapes.kicker(cx, cy, cx + 2 * a / t, cy + a, 12)); // curving down into the slope
-      b.ramp(m / t, m);                                          // the straight steep slope
-      b.ease(2 * c / t, c);                                      // curving out to flat
+    // Landing zone (owner request: big jumps land on a steep 45-70 degree downhill that then
+    // rounds out gradually, like a real motocross landing, and it must be where you ACTUALLY
+    // land, also for riders who hold the throttle and fly 70-90 m). Three parts, all smooth:
+    //  1. head (about 22 m): starts at `deg` degrees right at the crest and eases to a gentle 11 degrees
+    //  2. tail (about 56 m): a long gentle downhill where the fast flyers come down
+    //  3. round-out (about 25 m): flattens smoothly to level ground
+    // About 26-32 m of height is lost in all (more for steeper starts). Put it right after
+    // the gap or top of a jump. (The old `drop` argument is no longer used.)
+    steep: function (deg) {
+      var s0 = Math.tan(deg * Math.PI / 180), sT = 0.2, H = 1400, T = 3600, R = 1600, pts2 = [], x = cx, y = cy, i, n = 20;
+      for (i = 1; i <= n; i++) { // head: slope eases from s0 down to sT
+        var u = i / n, sl = sT + (s0 - sT) * (1 - u) * (1 - u);
+        x += H / n; y += sl * H / n; pts2.push({ x: x, y: y });
+      }
+      x += T; y += sT * T; pts2.push({ x: x, y: y }); // tail (straight, gentle)
+      for (i = 1; i <= n; i++) { // round-out: slope eases from sT down to 0
+        var v = i / n, sr = sT * (1 - v) * (1 - v);
+        x += R / n; y += sr * R / n; pts2.push({ x: x, y: y });
+      }
+      b.add(pts2);
     },
     // Where the automated test rider should aim for a speed (km/h) from here on
     speed: function (kmh, flip, x, fixed) { // fixed: the test rider keeps this speed at 0.9x / 1.1x too
@@ -244,7 +261,8 @@ function LevelBuilder() {
         name: o.name, tip: o.tip, theme: o.theme, groundTint: o.groundTint,
         physics: o.physics || {}, groundColor: o.groundColor || "#6b4f3a", groundTopColor: o.groundTopColor || "#a07e5e",
         start: { x: 0, y: -40 }, checkpoints: cp, finish: { x: finishX },
-        fallLimitY: cy + 800, terrain: terrain, zones: zones, testRide: o.testRide || rides
+        fallLimitY: lowestY() + 800, // falling 12 m below the lowest ground = crash
+        terrain: terrain, zones: zones, testRide: o.testRide || rides
       };
     }
   };
