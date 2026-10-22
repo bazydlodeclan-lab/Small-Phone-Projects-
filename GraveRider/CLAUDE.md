@@ -32,6 +32,13 @@ The finished game has 4 levels, played in this order:
   (up to 6 m) and FOUR freestyle ramps each (a backflip is possible). Level 2 has 6 pumpkin
   patches. The ghost is recorded every 4th step so a 5-minute run still fits in localStorage.
   Levels are built from helper functions inside each level's IIFE in `js/levels.js`.
+  Owner request 2026-10-23: BIG jumps (lip about 90 px / 1.4 m or more, and the freestyle ramps)
+  land on STEEP downhills, 45-70 degrees (`L.steep(deg, drop)` in the builder: short curve in,
+  long straight slope, curve out; the bike only stays on a steep slope if it LANDS on it, so the
+  straight part is long). Every steep landing is followed by flat + a climb so the level keeps
+  its height (levels still end far lower than they start). Landing assist (`CONFIG.landingAssist`,
+  `Bike.landing`): for 0.6 s after a jump a spring-damper torque eases the bike level with the
+  ground so a hard landing on one wheel does not tip it over its nose.
   The camera is zoomed out (900 px of height on screen) and looks lower when the bike is high,
   so the ground stays in view.
 
