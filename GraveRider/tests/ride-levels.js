@@ -83,7 +83,7 @@ const scales = [0.9, 1, 1.1];
       let flipping = false, flipTarget = 0, flipsDone = {}, maxG = 0, worstLandingTilt = 0;
       let lastProgressX = -1e9, lastProgressStep = 0, stuck = false, crashXs = [], prevCrashes = 0;
       const log = [];
-      for (let i = 0; i < 60 * 300 && s.mode !== "finished"; i++) {
+      for (let i = 0; i < 60 * 1200 && s.mode !== "finished"; i++) {
         const b = s.bike, raw = b.chassis.getAngle(), w = b.chassis.getAngularVelocity();
         const a = Math.atan2(Math.sin(raw), Math.cos(raw));
         const ground = b.rearOnGround || b.frontOnGround || b.bodyOnGround;
