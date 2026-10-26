@@ -33,11 +33,15 @@ The finished game has 4 levels, played in this order:
   patches. The ghost is recorded every 4th step so a 5-minute run still fits in localStorage.
   Levels are built from helper functions inside each level's IIFE in `js/levels.js`.
   Owner request 2026-10-23: BIG jumps (lip about 90 px / 1.4 m or more, and the freestyle ramps)
-  land on STEEP downhills, 45-70 degrees (`L.steep(deg)` in the builder; owner follow-up 2026-10-24: it must be where you
-  ACTUALLY land and round out gradually, not a straight wall: a head that starts at `deg` and eases
-  to 11 degrees over ~22 m, a gentle tail of ~75 m (riders who hold the throttle fly 60-75 m and land
-  there) and a ~28 m round-out; the old `drop` argument is ignored). Levels end far lower than they start; the fall limit is
-  set below the lowest ground point (`lowestY()` in `L.build`), not below the end of the level. Landing assist (`CONFIG.landingAssist`,
+  land on STEEP downhills, 45-70 degrees (`L.steep(deg)` in the builder; owner follow-ups 2026-10-24/26: it must be where you
+  ACTUALLY land and round out gradually, not a straight wall. Physics fact: the steeper the ground falls
+  away, the later a flying bike lands, and a rider at 130+ km/h flies 100-175 m. Zone, from the end of the
+  jump: flat gap ~31 m, head ~34 m from `deg` (45-70) down to ~33 degrees, a plateau ~56 m at 33 -> 27 degrees
+  where fast flyers land, a tail ~28 m to 9 degrees, a ~14 m round-out; the `drop` argument is ignored;
+  moon levels use `LevelBuilder({ landScale: 1.5 })`. About 80 m of height is lost per big landing.
+  Levels end far lower than they start; the fall limit is
+  set below the lowest ground point (`lowestY()` in `L.build`), not below the end of the level. Rider's arms (`riderMaxSwing` 0.45 rad, `Bike.control`): the body cannot swing more than ~26 degrees from the bike,
+  so a hard landing with forward lean no longer throws the rider over the bars. Landing assist (`CONFIG.landingAssist`,
   `Bike.landing`): for 0.6 s after a jump a spring-damper torque eases the bike level with the
   ground so a hard landing on one wheel does not tip it over its nose.
   The camera is zoomed out (900 px of height on screen) and looks lower when the bike is high,
