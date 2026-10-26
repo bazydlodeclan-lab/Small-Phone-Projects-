@@ -221,16 +221,16 @@ function LevelBuilder(opts) {
     // also for riders who hold the throttle). Physics fact: the steeper the ground falls away,
     // the later a flying bike comes down, and a rider at 130+ km/h flies 100-175 m. So, from
     // the end of the jump:
-    //  1. a flat gap (about 31 m; slower riders come down here and just roll on)
-    //  2. the head (about 34 m): starts at `deg` degrees (45-70) and eases to about 33 degrees
-    //  3. the plateau (about 56 m): a long steady 33 -> 27 degree slope where fast flyers land
-    //  4. the tail (about 28 m): eases to 9 degrees, then 14 m rounding out to flat
-    // About 80 m of height is lost in all. `drop` is no longer used. `gapPx` overrides the flat
+    //  1. a flat gap (about 19 m; slower riders come down here and just roll on)
+    //  2. the head (about 28 m): starts at `deg` degrees (45-70) and eases to about 29 degrees
+    //  3. the plateau (about 34 m): a steady 29 -> 22 degree slope where fast flyers land
+    //  4. the tail (about 22 m): eases to 7 degrees, then 12 m rounding out to flat
+    // About 45 m of height is lost in all. `drop` is no longer used. `gapPx` overrides the flat
     // gap (the freestyle ramps have their own). Moon levels build with
     // LevelBuilder({ landScale: 1.5 }) to stretch everything for low gravity.
     steep: function (deg, drop, gapPx) {
-      var k = landScale, s0 = Math.tan(deg * Math.PI / 180), sA = 0.65, sB = 0.5, sC = 0.15;
-      var G = (gapPx === undefined ? 2000 : gapPx) * k, H = 2200 * k, P = 3600 * k, T = 1800 * k, R = 900 * k, pts2 = [], x = cx, y = cy, i, sl;
+      var k = landScale, s0 = Math.tan(deg * Math.PI / 180), sA = 0.55, sB = 0.4, sC = 0.12;
+      var G = (gapPx === undefined ? 1200 : gapPx) * k, H = 1800 * k, P = 2200 * k, T = 1400 * k, R = 800 * k, pts2 = [], x = cx, y = cy, i, sl;
       if (G > 0) { x += G; pts2.push({ x: x, y: y }); }
       for (i = 1; i <= 20; i++) { // head: slope eases from s0 down to about 33 degrees
         sl = sA + (s0 - sA) * Math.pow(1 - i / 20, 1.3);

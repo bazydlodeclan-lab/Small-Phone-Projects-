@@ -640,7 +640,14 @@ var Game = (function () {
         });
         return;
       }
-      var edge = piece.solidAbove ? -5000 : 5000;
+      // The fill is closed by a line far below (or, for ceilings, far above) the piece itself. It
+      // used to be a fixed world height of 5000 px, so on tracks that go deeper than that the
+      // ground and sky swapped places (the fill ended up on the sky side of the surface).
+      if (piece.fillEdge === undefined) {
+        var ys = pts.map(function (p) { return p.y; });
+        piece.fillEdge = piece.solidAbove ? Math.min.apply(null, ys) - 5000 : Math.max.apply(null, ys) + 5000;
+      }
+      var edge = piece.fillEdge;
       ctx.beginPath();
       ctx.moveTo(pts[0].x, edge);
       pts.forEach(function (p) { ctx.lineTo(p.x, p.y); });
