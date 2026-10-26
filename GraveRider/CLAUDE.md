@@ -32,13 +32,18 @@ The finished game has 4 levels, played in this order:
   (up to 6 m) and FOUR freestyle ramps each (a backflip is possible). Level 2 has 6 pumpkin
   patches. The ghost is recorded every 4th step so a 5-minute run still fits in localStorage.
   Levels are built from helper functions inside each level's IIFE in `js/levels.js`.
+  Owner request 2026-10-27 (after playing): "at the start I like the terrain, later it is too big, too much stuff, too much air time" -> every level was rebuilt so
+  the whole level has the scale of its first third: lips at most 90 px, hills at most ~250 px, rolling ground between features, about 3800-4200 m,
+  TWO freestyle ramps (middle + finale), 3 pumpkin patches (level 2), 3 loops (level 4), ~6-8 big jumps with 45-55 degree steep landings,
+  tracks end at most ~230 m lower than they start. Also fixed: the ground fill used a fixed world height (5000 px) as its bottom edge, so
+  on deep tracks the ground and sky swapped places (now `piece.fillEdge`, relative to the piece).
   Owner request 2026-10-23: BIG jumps (lip about 90 px / 1.4 m or more, and the freestyle ramps)
   land on STEEP downhills, 45-70 degrees (`L.steep(deg)` in the builder; owner follow-ups 2026-10-24/26: it must be where you
   ACTUALLY land and round out gradually, not a straight wall. Physics fact: the steeper the ground falls
   away, the later a flying bike lands, and a rider at 130+ km/h flies 100-175 m. Zone, from the end of the
-  jump: flat gap ~31 m, head ~34 m from `deg` (45-70) down to ~33 degrees, a plateau ~56 m at 33 -> 27 degrees
-  where fast flyers land, a tail ~28 m to 9 degrees, a ~14 m round-out; the `drop` argument is ignored;
-  moon levels use `LevelBuilder({ landScale: 1.5 })`. About 80 m of height is lost per big landing.
+  jump (current values, see the comment in `L.steep`): flat gap ~19 m, head ~28 m from `deg` (45-55) down to ~29 degrees, a plateau ~34 m
+  at 29 -> 22 degrees, a tail ~22 m to 7 degrees, a ~12 m round-out; the `drop` argument is ignored;
+  moon levels use `LevelBuilder({ landScale: 1.5 })`. About 45 m of height is lost per big landing.
   Levels end far lower than they start; the fall limit is
   set below the lowest ground point (`lowestY()` in `L.build`), not below the end of the level. Rider's arms (`riderMaxSwing` 0.45 rad, `Bike.control`): the body cannot swing more than ~26 degrees from the bike,
   so a hard landing with forward lean no longer throws the rider over the bars. Landing assist (`CONFIG.landingAssist`,
