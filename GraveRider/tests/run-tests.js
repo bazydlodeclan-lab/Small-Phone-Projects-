@@ -107,7 +107,7 @@ function installHelpers() {
     // Spawn high up, turn the bike by `turns` (negative = backflip), then
     // nose-dive into the ground. Returns flips counted before the crash.
     flipThenCrash(turns) {
-      CONFIG.landingAssist = 0; // (the landing assist would save the dive; this test needs the crash)
+      CONFIG.landingAssist = 0; CONFIG.riderMaxSwing = 10; // (the landing assist and the rider's arm limit would save the dive; this test needs the crash)
       G.loadLevel(0);
       G.spawnBike({ x: 300, y: -3000 });
       Object.assign(G.input, none, { leanBack: true }); G.step(); // start the clock
@@ -122,7 +122,7 @@ function installHelpers() {
         G.step();
       }
       Object.assign(G.input, none);
-      CONFIG.landingAssist = CONFIG_DEFAULTS.landingAssist;
+      CONFIG.landingAssist = CONFIG_DEFAULTS.landingAssist; CONFIG.riderMaxSwing = CONFIG_DEFAULTS.riderMaxSwing;
       return { mode: s.mode, back: s.backflips, front: s.frontflips, bonus: s.flipBonusMs };
     }
   };

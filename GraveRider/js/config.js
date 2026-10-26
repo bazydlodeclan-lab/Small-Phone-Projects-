@@ -79,6 +79,9 @@ var CONFIG = {
   riderStrength: 4000,       // how firmly the rider is held in position on the pegs (N·m) [GAME CHOICE: this one joint
                              // stands in for feet, knees gripping the bike and hands on the bars; muscle alone is
                              // ~500-1200 N·m, but at 800 the rider falls off under ordinary hard braking]
+  riderMaxSwing: 0.45,       // radians: the rider's arms and knees keep the body within this angle of the bike [GAME CHOICE]
+  riderArmStiffness: 90000,  // N·m per radian beyond that angle [GAME CHOICE]
+  riderArmDamping: 3000,     // N·m·s per radian [GAME CHOICE]
   riderLeanSpeed: 0.8,       // weight shift speed: neutral to full lean in about 0.35 s [ESTIMATE]
 
   // --- Rider's legs ---

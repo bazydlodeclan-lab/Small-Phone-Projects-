@@ -168,7 +168,8 @@ var TEST_TRACK =
 //   loop(R)             a loop-the-loop (Bat level)
 //   checkpoint()        a checkpoint flag at the current spot
 //   pad(w, label, bounce)  a pumpkin trampoline zone over the next w px of ground
-function LevelBuilder() {
+function LevelBuilder(opts) {
+  var landScale = (opts && opts.landScale) || 1;
   var pts = [{ x: -600, y: 0 }], cp = [], zones = [], terrain = [], loops = 0, rides = [];
   var cx = -600, cy = 0;
   function lowestY() { // lowest ground point (y grows downward): the fall limit sits below the whole track
@@ -211,28 +212,41 @@ function LevelBuilder() {
       b.flat(1300 * gap);
       b.add(Shapes.curve(cx, cy, cx + 160, cy - 80, 8)); // landing ramp face (rideable if you come up short)
       b.flat(40);
-      b.steep(50, 1500 * gap);                          // steep landing: the bike lands on a 50 degree downhill
+      b.steep(50, 0, 0);                                 // steep landing zone right after the face (the gap above is its own)
       b.flat(300);
       b.speed(before);
     },
-    // Landing zone (owner request: big jumps land on a steep 45-70 degree downhill that then
-    // rounds out gradually, like a real motocross landing, and it must be where you ACTUALLY
-    // land, also for riders who hold the throttle and fly 70-90 m). Three parts, all smooth:
-    //  1. head (about 22 m): starts at `deg` degrees right at the crest and eases to a gentle 11 degrees
-    //  2. tail (about 75 m): a long gentle downhill where the fast flyers come down
-    //  3. round-out (about 28 m): flattens smoothly to level ground
-    // About 30-36 m of height is lost in all (more for steeper starts). Put it right after
-    // the gap or top of a jump. (The old `drop` argument is no longer used.)
-    steep: function (deg) {
-      var s0 = Math.tan(deg * Math.PI / 180), sT = 0.2, H = 1400, T = 4800, R = 1800, pts2 = [], x = cx, y = cy, i, n = 20;
-      for (i = 1; i <= n; i++) { // head: slope eases from s0 down to sT
-        var u = i / n, sl = sT + (s0 - sT) * (1 - u) * (1 - u);
-        x += H / n; y += sl * H / n; pts2.push({ x: x, y: y });
+    // Landing zone (owner request: big jumps land on a steep 45-70 degree downhill that rounds
+    // out gradually, like a real motocross landing, and it must be where you ACTUALLY land,
+    // also for riders who hold the throttle). Physics fact: the steeper the ground falls away,
+    // the later a flying bike comes down, and a rider at 130+ km/h flies 100-175 m. So, from
+    // the end of the jump:
+    //  1. a flat gap (about 31 m; slower riders come down here and just roll on)
+    //  2. the head (about 34 m): starts at `deg` degrees (45-70) and eases to about 33 degrees
+    //  3. the plateau (about 56 m): a long steady 33 -> 27 degree slope where fast flyers land
+    //  4. the tail (about 28 m): eases to 9 degrees, then 14 m rounding out to flat
+    // About 80 m of height is lost in all. `drop` is no longer used. `gapPx` overrides the flat
+    // gap (the freestyle ramps have their own). Moon levels build with
+    // LevelBuilder({ landScale: 1.5 }) to stretch everything for low gravity.
+    steep: function (deg, drop, gapPx) {
+      var k = landScale, s0 = Math.tan(deg * Math.PI / 180), sA = 0.65, sB = 0.5, sC = 0.15;
+      var G = (gapPx === undefined ? 2000 : gapPx) * k, H = 2200 * k, P = 3600 * k, T = 1800 * k, R = 900 * k, pts2 = [], x = cx, y = cy, i, sl;
+      if (G > 0) { x += G; pts2.push({ x: x, y: y }); }
+      for (i = 1; i <= 20; i++) { // head: slope eases from s0 down to about 33 degrees
+        sl = sA + (s0 - sA) * Math.pow(1 - i / 20, 1.3);
+        x += H / 20; y += sl * (H / 20); pts2.push({ x: x, y: y });
       }
-      x += T; y += sT * T; pts2.push({ x: x, y: y }); // tail (straight, gentle)
-      for (i = 1; i <= n; i++) { // round-out: slope eases from sT down to 0
-        var v = i / n, sr = sT * (1 - v) * (1 - v);
-        x += R / n; y += sr * R / n; pts2.push({ x: x, y: y });
+      for (i = 1; i <= 15; i++) { // plateau: a long, steady slope (33 down to 27 degrees) where the fast flyers land
+        sl = sA + (sB - sA) * i / 15;
+        x += P / 15; y += sl * (P / 15); pts2.push({ x: x, y: y });
+      }
+      for (i = 1; i <= 10; i++) { // tail: eases from 27 down to 9 degrees
+        sl = sB + (sC - sB) * i / 10;
+        x += T / 10; y += sl * (T / 10); pts2.push({ x: x, y: y });
+      }
+      for (i = 1; i <= 12; i++) { // round-out: slope eases from 9 degrees down to 0
+        sl = sC * (1 - i / 12) * (1 - i / 12);
+        x += R / 12; y += sl * (R / 12); pts2.push({ x: x, y: y });
       }
       b.add(pts2);
     },
@@ -577,7 +591,7 @@ var LEVELS = [
   // Gravity is 40%: everything is floaty. Jumps carry about 2.5 times as far, so the
   // take-offs are small and the landings are very long.
   (function () {
-      var L = LevelBuilder();
+      var L = LevelBuilder({ landScale: 1.5 });
       // --- helpers (all private to this level) ---
       function cp(pre, post) { L.flat(pre === undefined ? 300 : pre); L.checkpoint(); L.flat(post === undefined ? 300 : post); }
       // tabletop: h = lip height in px, k = landing size factor (1 = the proven 600/3600 shape)

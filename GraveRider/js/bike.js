@@ -528,6 +528,18 @@ var Bike = (function () {
     var target = lean > 0 ? CONFIG.riderLeanForward : lean < 0 ? -CONFIG.riderLeanBack : 0;
     if (lean === 0 && input.brake && !input.gas && forwardSpeed > 1) target = -0.6 * CONFIG.riderLeanBack;
     if (bike.hips) {
+      // The rider's arms and knees hold on to the bike: the body cannot swing more than about
+      // 26 degrees forward or back of the bike (a hard landing used to throw the rider over the
+      // bars while the bike stayed on its wheels). A stiff spring-damper beyond that angle.
+      var rel = bike.rider.getAngle() - c.getAngle();
+      rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+      var over = Math.abs(rel) - CONFIG.riderMaxSwing;
+      if (over > 0) {
+        var relW = bike.rider.getAngularVelocity() - c.getAngularVelocity(), sgn = rel > 0 ? 1 : -1;
+        var Tq = -sgn * (CONFIG.riderArmStiffness * over + CONFIG.riderArmDamping * (sgn * relW > 0 ? relW * sgn : 0));
+        bike.rider.applyTorque(Tq, true);
+        c.applyTorque(-Tq, true);
+      }
       // Shift weight smoothly (a real rider can't throw their body instantly)
       var leanSpeed = (target - (bike.rider.getAngle() - c.getAngle())) * 10;
       bike.hips.setMotorSpeed(Math.max(-CONFIG.riderLeanSpeed, Math.min(CONFIG.riderLeanSpeed, leanSpeed)));
