@@ -635,6 +635,12 @@ var Bike = (function () {
     if (!bike.hips || !CONFIG.landingAssist) return;
     var air = bike.rearAir >= CONTACT_GRACE_STEPS && bike.frontAir >= CONTACT_GRACE_STEPS;
     if (air) { bike.airSteps = (bike.airSteps || 0) + 1; return; }
+    // Anti-endo: with a wheel on the ground and the nose pitched far DOWN compared with the ground
+    // (more than about 20 degrees, e.g. leaving a steep landing slope), a rider shifts weight back and
+    // the bike does not tip over its front wheel. A gentle torque only for the part beyond 20 degrees.
+    var nd = bike.chassis.getAngle() - bike.groundAngle;
+    nd = Math.atan2(Math.sin(nd), Math.cos(nd));
+    if (nd > 0.35 && nd < 1.8) bike.chassis.applyTorque(-Math.min(3500, 5000 * (nd - 0.35)) * CONFIG.landingAssist - 250 * Math.max(0, bike.chassis.getAngularVelocity()), true);
     // Only a REAL jump counts (at least 0.5 s in the air): whoops, rollers and small hops must ride
     // exactly like normal, otherwise the assists below would push the bike down on bumps.
     if ((bike.airSteps || 0) > 30) { bike.landSteps = 24; bike.landImpact = 0; }
