@@ -420,112 +420,139 @@ var LEVELS = [
   // thrown back up (BOING). Ride the bounces level and carry your speed to the next jump.
   // The freestyle ramp is the finale.
   (function () {
-        var L = LevelBuilder();
-        var lastCp = -4000;
-        // Calm rolling ground between features; drops a checkpoint when the last one is far behind.
-        function calm(len, h) {
-          L.hills(Math.round(len / 800) * 800, h || 24, 800); L.flat(300);
-          if (L.x() - lastCp > 15500) { L.flat(250); L.checkpoint(); lastCp = L.x(); L.flat(250); }
-        }
-        // A checkpoint BEFORE every big jump, then a short run-up
-        function bigCp() { if (L.x() - lastCp > 2500) { L.flat(250); L.checkpoint(); lastCp = L.x(); L.flat(250); } L.flat(300); }
-        // Climb back up (gentle uphill) so the level never ends far below its start
-        function climb(dy) { dy = Math.round(dy * 0.55); if (dy < 100) return; L.bump(dy * 5, -dy); L.flat(400); }
-        // Flat run-out after a steep landing, then the climb back
-        function runOut(dy) { L.flat(600); climb(dy); }
-        // Small tabletop (lip under 70 px) with the gentle long landing
-        function smallTable(h) {
-          var k = h - 62;
-          L.table(600 + k * 6, -h, 640 + k * 6, 2300 + k * 30, 560 + k * 5, 900 + k * 6, 100 + k * 0.5);
-        }
-        // Rhythm: n small doubles in a row
-        function rhythm(n, s) {
-          for (var i = 0; i < n; i++) {
-            var q = s * (1 + 0.12 * i);
-            L.lip(480 * q, -62 * q); L.ramp(100 * q, 30 * q); L.flat(90 * q); L.ramp(100 * q, -34 * q);
-            L.ramp(60, 8); L.ramp(260 * q, 64 * q); L.ease(200 * q, 22 * q);
-            L.flat(160 * q);
+          var L = LevelBuilder();
+          var lastCp = -4000, nFeat = 0;
+          // Checkpoint (between features only): about every 250 m
+          function cpNow() { L.flat(150); L.checkpoint(); lastCp = L.x(); L.flat(150); }
+          function due() { nFeat++; if (L.x() - lastCp > 14500) cpNow(); }
+          // A checkpoint BEFORE every big jump, then a short run-up
+          function bigCp() { nFeat++; if (L.x() - lastCp > 6000) cpNow(); L.flat(300); }
+          // Climb back up (short uphill) when the track has sunk too far
+          function climb() { var dy = Math.min(1300, L.y() - 1500); if (dy < 300) return; L.bump(Math.round(dy * 4), -dy); L.flat(250); }
+          function land(deg) { L.steep(deg); L.flat(250); climb(); }
+          // Small tabletop (lip under 70 px), short gentle landing (~35 m)
+          function smallTable(h) { due(); L.table(Math.round(h * 7.6 + 80), -h, 420, 800, 220, 400, 40); L.flat(250); }
+          // Rhythm: n small doubles in a row (~23 m each)
+          function rhythm(n, s) {
+            due();
+            for (var i = 0; i < n; i++) {
+              var q = s * (1 + 0.1 * i);
+              L.lip(480 * q, -62 * q); L.ramp(100 * q, 30 * q); L.flat(90 * q); L.ramp(100 * q, -34 * q);
+              L.ramp(60, 8); L.ramp(260 * q, 64 * q); L.ease(200 * q, 22 * q);
+              L.flat(i < n - 1 ? 120 : 250);
+            }
           }
-        }
-        // BIG tabletop (lip 72-90) on a steep landing
-        function bigTable(h, deg, back) {
-          var k = h - 62;
-          bigCp();
-          L.lip(600 + k * 6, -h); L.flat(640 + k * 6); L.ramp(80, h * 0.17);
-          L.steep(deg); runOut(back);
-        }
-        // BIG double on a steep landing
-        function bigDouble(h, deg, back) {
-          var k = h - 70;
-          bigCp();
-          L.lip(560 + k * 7, -h); L.ramp(100, h * 0.43); L.flat(100); L.ramp(110, -h * 0.57);
-          L.steep(deg); runOut(back);
-        }
-        // BIG triple on a steep landing
-        function bigTriple(h, deg, back) {
-          bigCp();
-          L.lip(540 + h * 2, -h);
-          for (var i = 0; i < 3; i++) { L.ramp(280, h * 0.45); L.flat(60); L.ramp(400, -h * 0.5); L.flat(i < 2 ? 140 : 40); }
-          L.steep(deg); runOut(back);
-        }
-        // Hill with a flat top (h up to 250 px)
-        function hill(h, len, top) { L.bump(len, -h); L.flat(top || 400); L.bump(len, h); L.flat(300); }
-        // Pumpkin patch: a jump onto a long flat zone of trampolines
-        function patch(label, bounce, h, w) {
+          // Step-up: jump onto a raised platform, then step down
+          function stepUp(h) {
+            due();
+            L.lip(Math.round(h * 7 + 60), -h); L.ramp(150, Math.round(h * 1.5)); L.flat(150); L.bump(260, -Math.round(h * 1.5));
+            L.flat(450); L.bump(500, h); L.flat(250);
+          }
+          function whoops(n, h) { due(); L.whoops(n, 240, h); L.flat(300); }
+          function rollers(len, h) { due(); L.hills(len, h || 28, 700); L.flat(200); }
+          function hill(h, len, top) { due(); L.bump(len, -h); L.flat(top || 300); L.bump(len, h); L.flat(250); }
+          // BIG tabletop (lip 72-90) on a steep landing
+          function bigTable(h, deg) { bigCp(); L.lip(Math.round(h * 7.6 + 80), -h); L.flat(520); L.ramp(80, h * 0.17); land(deg); }
+          // BIG double on a steep landing
+          function bigDouble(h, deg) { bigCp(); L.lip(Math.round(h * 7 + 40), -h); L.ramp(100, h * 0.43); L.flat(100); L.ramp(110, -h * 0.57); land(deg); }
+          // BIG triple on a steep landing
+          function bigTriple(h, deg) {
+            bigCp(); L.lip(540 + h * 2, -h);
+            for (var i = 0; i < 3; i++) { L.ramp(280, h * 0.45); L.flat(60); L.ramp(400, -h * 0.5); L.flat(i < 2 ? 140 : 40); }
+            land(deg);
+          }
+          // BIG step-up on a steep landing
+          function bigStep(h, deg) { bigCp(); L.lip(Math.round(h * 6), -h); L.flat(450); land(deg); }
+          // Pumpkin patch: a jump onto a long flat zone of trampolines
+          function patch(label, bounce, h, w) {
+            due(); L.speed(45);
+            L.lip(560 + h * 1.2, -h); L.ramp(h * 2, h * 0.5); L.flat(120);
+            L.pad(w, label, bounce); L.flat(w);
+          }
+          function freestyle() { bigCp(); L.freestyle(1); }
+  
           L.speed(45);
-          L.lip(560 + h * 1.2, -h); L.ramp(h * 2, h * 0.5); L.flat(120);
-          L.pad(w, label, bounce); L.flat(w);
-        }
-        function freestyle() { bigCp(); L.freestyle(1); runOut(3000); }
-  
-        L.speed(45);
-        // ===== CHAPTER 1: warm-up (start straight, rollers, whoops, tabletop, first patch) =====
-        L.flat(1300);
-        calm(1600);
-        L.whoops(8, 240, 18); calm(1600);
-        smallTable(66); calm(1600);
-        patch("PUMPKIN PATCH", 0.8, 80, 2200); L.speed(48); calm(2400);
-        rhythm(3, 0.9); calm(1600);
-        L.whoops(10, 240, 20); calm(1600);
-        hill(200, 1800, 300); calm(1600);
-  
-        // ===== CHAPTER 2: first big jumps =====
-        L.speed(48);
-        bigTable(76, 45, 2800); calm(1600);
-        L.whoops(12, 240, 22); calm(2400);
-        bigDouble(80, 45, 2800); calm(2400);
-        hill(240, 2200, 300); calm(1600);
-        freestyle(); calm(1600);                                              // freestyle 1 (the middle)
-  
-        // ===== CHAPTER 3: patch, rhythm, tabletops =====
-        L.speed(50);
-        patch("BIG BOUNCE", 0.85, 85, 2300); L.speed(50); calm(2400);
-        L.whoops(14, 240, 24); calm(1600);
-        bigTable(86, 50, 2800); calm(2400);
-        rhythm(3, 0.95); calm(1600);
-        hill(230, 2000, 300); calm(1600);
-        bigTriple(80, 50, 2800); calm(2400);
-  
-        // ===== CHAPTER 4: the finish =====
-        L.speed(50);
-        L.whoops(10, 240, 22); calm(2400);
-        patch("GREAT PUMPKIN", 0.85, 85, 2400); L.speed(50); calm(1600);
-        bigDouble(86, 50, 2800); calm(2400);
-        bigTable(90, 55, 2800); calm(2400);
-        freestyle();                                                          // freestyle 2: the finale
-        L.flat(400);
-        return L.build({
-          name: "Level 2 - Pumpkin Patch",
-          tip: "Tip: pumpkins are trampolines. Land level and keep the throttle gentle",
-          groundColor: "#5a3a22", groundTopColor: "#b86a1c", groundTint: "rgba(120,50,0,0.25)",
-          theme: {
-            kind: "pumpkin", sky: ["#1a0a1f", "#4a1a2a", "#a2481c"], stars: 0.3,
-            body: { kind: "blood", x: 0.75, y: 0.22, r: 58, color: "#ff9a3a", glow: "rgba(255,150,50,0.3)" },
-            hills: [[0.12, "#3a1a28", 0.64, 90], [0.25, "#2a1220", 0.76, 70]],
-            propColor: "#ff8a1f", propColor2: "#2d4a1f", density: 0.55
-          }
-        });
-      })(),
+          // ===== CHAPTER 1: warm-up =====
+          L.flat(1300);
+          L.hills(1600, 28, 800); L.flat(200);                  // rollers
+          whoops(8, 18);
+          smallTable(60);
+          rollers(2100, 26);
+          rhythm(2, 0.9);
+          patch("PUMPKIN PATCH", 0.8, 80, 2200); L.speed(48); L.flat(300);
+          whoops(10, 20);
+          hill(200, 1600, 250);
+          stepUp(50);
+          rhythm(3, 0.9);
+          smallTable(62);
+          whoops(10, 20);
+          // ===== CHAPTER 2: first big jumps =====
+          L.speed(48);
+          bigTable(76, 45);
+          whoops(8, 20);
+          rhythm(2, 0.95);
+          smallTable(64);
+          bigDouble(80, 45);
+          rollers(2100, 28);
+          stepUp(56);
+          whoops(12, 22);
+          hill(240, 2000, 250);
+          smallTable(68);
+          whoops(10, 22);
+          rhythm(2, 1);
+          bigStep(80, 45);
+          stepUp(54);
+          freestyle();                                           // freestyle 1 (the middle)
+          // ===== CHAPTER 3: patch, rhythm, tabletops =====
+          L.speed(50);
+          whoops(8, 20);
+          patch("BIG BOUNCE", 0.85, 85, 2300); L.speed(50); L.flat(300);
+          rhythm(3, 0.95);
+          bigTable(86, 50);
+          whoops(10, 22);
+          stepUp(60);
+          bigTriple(80, 50);
+          rollers(2100, 28);
+          rhythm(2, 0.95);
+          smallTable(66);
+          hill(230, 1900, 250);
+          bigStep(84, 50);
+          whoops(12, 24);
+          rhythm(3, 1);
+          smallTable(70);
+          hill(250, 2000, 250);
+          bigDouble(84, 50);
+          whoops(10, 22);
+          // ===== CHAPTER 4: the finish =====
+          L.speed(50);
+          smallTable(68);
+          patch("GREAT PUMPKIN", 0.85, 85, 2400); L.speed(50); L.flat(300);
+          whoops(10, 22);
+          bigDouble(86, 50);
+          stepUp(60);
+          rhythm(3, 0.95);
+          rollers(2100, 28);
+          smallTable(66);
+          whoops(12, 22);
+          bigTable(90, 55);
+          whoops(8, 22);
+          rhythm(2, 1);
+          hill(240, 1800, 250);
+          stepUp(56);
+          freestyle();                                           // freestyle 2: the finale
+          L.flat(400);
+          return L.build({
+            name: "Level 2 - Pumpkin Patch",
+            tip: "Tip: pumpkins are trampolines. Land level and keep the throttle gentle",
+            groundColor: "#5a3a22", groundTopColor: "#b86a1c", groundTint: "rgba(120,50,0,0.25)",
+            theme: {
+              kind: "pumpkin", sky: ["#1a0a1f", "#4a1a2a", "#a2481c"], stars: 0.3,
+              body: { kind: "blood", x: 0.75, y: 0.22, r: 58, color: "#ff9a3a", glow: "rgba(255,150,50,0.3)" },
+              hills: [[0.12, "#3a1a28", 0.64, 90], [0.25, "#2a1220", 0.76, 70]],
+              propColor: "#ff8a1f", propColor2: "#2d4a1f", density: 0.55
+            }
+          });
+        })(),
 
   // ---------------- LEVEL 3: MOON CRATER (low gravity) ----------------
   // Gravity is 40%: everything is floaty. Jumps carry about 2.5 times as far, so the
@@ -621,97 +648,125 @@ var LEVELS = [
   // (about 60 km/h or more); too slow and you fall off the wall. In between: whoops,
   // a rhythm section, tabletops and the freestyle ramp.
   (function () {
-        var L = LevelBuilder();
-        var lastCp = 0;
-        function chk(min) { // checkpoint on level ground when the last one is far behind
-          if (L.x() - lastCp > (min || 16000)) { L.flat(250); L.checkpoint(); L.flat(250); lastCp = L.x(); }
-        }
-        function chkBig() { chk(3500); L.flat(300); } // always a checkpoint close before a big jump
-        function calm(len, h) { L.hills(len, h || 26, 800); L.flat(300); } // calm rolling ground (len = multiple of 800)
-        function tbl(h) {                        // tabletop with the gentle long landing, h = lip height in px
-          L.table(Math.round(7.5 * h + 100), -h, 640 + (h - 66) * 3, Math.round(38 * h), Math.round(9.5 * h), Math.round(14 * h), Math.round(1.6 * h));
-        }
-        function dbl(h) {                        // double jump with the gentle long landing
-          var k = h / 80;
-          L.lip(Math.round(600 + (k - 1) * 300), -h); L.ramp(Math.round(120 * k), Math.round(50 * k)); L.flat(Math.round(110 * k));
-          L.ramp(Math.round(110 * k), Math.round(-45 * k)); L.ramp(80, 10); L.ramp(Math.round(1800 * k), Math.round(420 * k)); L.ease(Math.round(900 * k), Math.round(90 * k));
-        }
-        function land(deg) {                     // steep landing, flat, then a long gentle climb back up
-          L.steep(deg); L.flat(400); L.bump(6400, -1700); L.flat(300);
-        }
-        function tblS(h, deg) {                  // big tabletop with a steep landing
-          chkBig();
-          L.lip(Math.round(7.5 * h + 100), -h); L.flat(640 + (h - 66) * 3); land(deg);
-        }
-        function dblS(h, deg) {                  // big double with a steep landing
-          var k = h / 80;
-          chkBig();
-          L.lip(Math.round(600 + (k - 1) * 300), -h); L.ramp(Math.round(120 * k), Math.round(50 * k)); L.flat(Math.round(110 * k));
-          land(deg);
-        }
-        function rhythm(n, s, gap) {             // n small doubles in a row, each a bit bigger
-          for (var i = 0; i < n; i++) {
-            var k = s + 0.08 * i;
-            L.lip(Math.round(480 * k), Math.round(-62 * k)); L.ramp(Math.round(100 * k), Math.round(30 * k)); L.flat(Math.round(90 * k));
-            L.ramp(Math.round(100 * k), Math.round(-34 * k)); L.ramp(60, 8); L.ramp(Math.round(260 * k), Math.round(64 * k)); L.ease(Math.round(200 * k), Math.round(22 * k));
-            L.flat(gap);
+          var L = LevelBuilder();
+          var lastCp = 0;
+          function cp() { L.flat(250); L.checkpoint(); L.flat(250); lastCp = L.x(); }
+          function due(gap) { if (L.x() - lastCp > (gap || 14500)) cp(); }   // a checkpoint about every 250 m, on level ground
+          function bcp() { if (L.x() - lastCp > 4500) cp(); else L.flat(300); } // always a checkpoint close before a big jump
+          // climb back up after a steep landing so the track keeps its height
+          function climb() {
+            var dy = Math.min(1600, L.y() - 300);
+            if (dy > 150) { L.bump(Math.round(dy * 4.5), -dy); L.flat(250); }
           }
-        }
-        function bigLoop(after) {                // 2000 px of flat before the loop, a long flat after it
-          chk(9000); L.flat(300);
-          L.speed(60); L.flat(2000);
-          L.loop(320);
-          L.speed(50); L.flat(after || 1500);
-        }
-        function hill(h, len) { L.bump(len, -h); L.flat(300); L.bump(len, h); L.flat(300); }
-        function freeCalm() { L.flat(600); }     // flat ground after a freestyle landing
-        L.speed(50);
-  
-        // ---- Chapter 1: start straight, rollers, first tabletop, whoops, loop 1 ----
-        L.flat(1300);
-        calm(1600, 29);
-        chk(); tbl(60); calm(1600);
-        L.whoops(8, 240, 18); calm(1600);
-        hill(200, 1800); calm(1600);
-        bigLoop();                                                  // loop 1
-        calm(1600);
-        chk(); dbl(80); calm(1600);
-        L.whoops(10, 240, 20); calm(1600);
-        tblS(90, 45); calm(1600);
-        chk(); rhythm(3, 1.0, 200); calm(1600);
-  
-        // ---- Chapter 2: hills, loop 2, doubles, the middle freestyle ----
-        hill(230, 1800); calm(1600);
-        bigLoop(1600);                                              // loop 2 (1600 flat after it)
-        calm(1600);
-        L.whoops(12, 240, 20); calm(1600);
-        dblS(85, 50); calm(1600);
-        chk(); L.freestyle(1); freeCalm(); calm(1600);              // freestyle 1 (the middle)
-  
-        // ---- Chapter 3: whoops, tabletops, loop 3 ----
-        L.whoops(10, 240, 20); calm(1600);
-        tblS(90, 50); calm(1600);
-        bigLoop();                                                  // loop 3
-        calm(1600);
-        L.whoops(12, 240, 22); calm(1600);
-        dblS(90, 50); calm(1600);
-        chk(); rhythm(4, 1.0, 200); calm(1600);
-  
-        // ---- Chapter 4: the finale ----
-        tblS(90, 55); calm(1600);
-        chk(); L.whoops(14, 240, 22); calm(1600);
-        dblS(90, 50); calm(1600);
-        tblS(90, 55); calm(1600);
-        chk(); L.freestyle(1); L.flat(400);                         // freestyle 2: the finale
-        return L.build({
-          name: "Level 4 - Bat Cave",
-          tip: "Tip: loops need speed. Hold the throttle through the whole loop",
-          groundColor: "#2a2433", groundTopColor: "#6a5a80", groundTint: "rgba(60,40,90,0.3)",
-          theme: {
-            kind: "bat", sky: ["#05030c", "#150a24", "#2a1238"], stars: 0.2,
-            hills: [[0.12, "#1c1230", 0.66, 90], [0.25, "#120a22", 0.78, 70]],
-            propColor: "#3a2a50", propColor2: "#7a5aa0", density: 0.5
+          function rollers(len, h) { due(); L.hills(len, h || 28, 800); L.flat(200); }
+          function tbl(h) {                        // small tabletop, gentle landing about 35 m
+            due();
+            L.table(Math.round(7.5 * h + 100), -h, 620 + (h - 60) * 3, Math.round(28 * h), Math.round(8.5 * h), Math.round(10 * h), Math.round(1.5 * h));
+            L.flat(250);
           }
-        });
-      })()
+          function dbl(h) {                        // small double with a gentle landing
+            var k = h / 80;
+            due();
+            L.lip(Math.round(600 + (k - 1) * 300), -h); L.ramp(Math.round(120 * k), Math.round(50 * k)); L.flat(Math.round(110 * k));
+            L.ramp(Math.round(110 * k), Math.round(-45 * k)); L.ramp(80, 10); L.ramp(Math.round(1300 * k), Math.round(330 * k)); L.ease(Math.round(600 * k), Math.round(70 * k));
+            L.flat(250);
+          }
+          function whoops(n, h) { due(); L.whoops(n, 240, h || 20); L.flat(250); }
+          function rhythm(n, s, gap) {             // n small doubles in a row, each a bit bigger
+            due();
+            for (var i = 0; i < n; i++) {
+              var k = s + 0.07 * i;
+              L.lip(Math.round(480 * k), Math.round(-62 * k)); L.ramp(Math.round(100 * k), Math.round(30 * k)); L.flat(Math.round(90 * k));
+              L.ramp(Math.round(100 * k), Math.round(-34 * k)); L.ramp(60, 8); L.ramp(Math.round(260 * k), Math.round(64 * k)); L.ease(Math.round(200 * k), Math.round(22 * k));
+              L.flat(gap || 150);
+            }
+          }
+          function hill(h, len) { due(); L.bump(len, -h); L.flat(200); L.bump(len, h); L.flat(250); }
+          function stepUp(h) { due(); L.bump(500, -h); L.flat(700); L.bump(500, h * 0.6); L.flat(250); L.bump(500, h * 0.4); L.flat(250); } // step up, plateau, two steps down
+          function tblS(h, deg) { bcp(); L.lip(Math.round(7.5 * h + 100), -h); L.flat(640 + (h - 66) * 3); L.steep(deg); L.flat(250); climb(); }
+          function dblS(h, deg) {
+            var k = h / 80;
+            bcp(); L.lip(Math.round(600 + (k - 1) * 300), -h); L.ramp(Math.round(120 * k), Math.round(50 * k)); L.flat(Math.round(110 * k));
+            L.steep(deg); L.flat(250); climb();
+          }
+          function stepS(h, deg) { bcp(); L.lip(Math.round(h * 6), -h); L.flat(500); L.steep(deg); L.flat(250); climb(); }
+          function bigLoop(after) {                // 1500 px of flat before the loop, flat after it
+            due(11000); L.flat(300);
+            L.speed(60); L.flat(1500);
+            L.loop(320);
+            L.speed(50); L.flat(after || 500);
+          }
+          L.speed(50);
+  
+          // ---- Chapter 1: start straight, rollers, tabletop, whoops, loop 1 ----
+          L.flat(1300);
+          L.hills(1600, 29, 800); L.flat(200);
+          tbl(58);
+          whoops(8, 18);
+          hill(150, 1100);
+          rhythm(3, 1.0, 150);
+          tbl(66);
+          whoops(10, 20);
+          stepUp(120);
+          bigLoop(500);                                                // loop 1
+          dbl(70);
+          rollers(1600);
+          whoops(10, 20);
+          tblS(88, 45);
+          rhythm(3, 1.05, 150);
+          tbl(64);
+          hill(180, 1400);
+          whoops(12, 20);
+          dblS(86, 48);
+          stepUp(140);
+          tbl(70);
+          rollers(1600, 30);
+  
+          // ---- Chapter 2: the middle freestyle, loop 2 ----
+          bcp();
+          L.freestyle(1);                                              // freestyle 1 (the middle)
+          climb();
+          whoops(10, 20);
+          dbl(72);
+          rhythm(3, 1.0, 150);
+          bigLoop(1100);                                               // loop 2 (1100 flat after it)
+          tbl(62);
+          hill(200, 1500);
+          whoops(12, 22);
+          tblS(90, 50);
+          rollers(1600);
+          rhythm(4, 1.0, 150);
+          dbl(76);
+          stepUp(150);
+          dblS(88, 50);
+  
+          // ---- Chapter 3: loop 3 and the finale ----
+          whoops(12, 22);
+          bigLoop(700);                                                // loop 3
+          rhythm(3, 1.1, 150);
+          tbl(66);
+          stepS(86, 50);
+          whoops(10, 22);
+          dbl(74);
+          hill(200, 1500);
+          tblS(90, 55);
+          rhythm(4, 1.0, 150);
+          whoops(14, 22);
+          dblS(90, 50);
+          stepUp(130);
+          tblS(90, 50);
+          rollers(1600);
+          bcp();
+          L.freestyle(1); L.flat(400);                                 // freestyle 2: the finale
+          return L.build({
+            name: "Level 4 - Bat Cave",
+            tip: "Tip: loops need speed. Hold the throttle through the whole loop",
+            groundColor: "#2a2433", groundTopColor: "#6a5a80", groundTint: "rgba(60,40,90,0.3)",
+            theme: {
+              kind: "bat", sky: ["#05030c", "#150a24", "#2a1238"], stars: 0.2,
+              hills: [[0.12, "#1c1230", 0.66, 90], [0.25, "#120a22", 0.78, 70]],
+              propColor: "#3a2a50", propColor2: "#7a5aa0", density: 0.5
+            }
+          });
+        })()
 ];

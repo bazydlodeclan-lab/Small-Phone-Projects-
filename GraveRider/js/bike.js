@@ -635,26 +635,31 @@ var Bike = (function () {
     if (!bike.hips || !CONFIG.landingAssist) return;
     var air = bike.rearAir >= CONTACT_GRACE_STEPS && bike.frontAir >= CONTACT_GRACE_STEPS;
     if (air) { bike.airSteps = (bike.airSteps || 0) + 1; return; }
-    if ((bike.airSteps || 0) > 6) { bike.landSteps = 50; bike.landImpact = 0; } // just landed after a real jump
+    // Only a REAL jump counts (at least 0.5 s in the air): whoops, rollers and small hops must ride
+    // exactly like normal, otherwise the assists below would push the bike down on bumps.
+    if ((bike.airSteps || 0) > 30) { bike.landSteps = 24; bike.landImpact = 0; }
     bike.airSteps = 0;
     if (!(bike.landSteps > 0)) return;
     bike.landSteps--;
-    // Shocks absorb the landing (owner request: no bounce): after a hard landing, any speed AWAY
-    // from the ground is mostly soaked up, instead of the bike springing back into the air.
     var ga0 = bike.groundAngle || 0, nx = Math.sin(ga0), ny = -Math.cos(ga0);
     var cv = bike.chassis.getLinearVelocity(), vn = cv.x * nx + cv.y * ny;
     if (-vn > bike.landImpact) bike.landImpact = -vn;
-    if (bike.landImpact > CONFIG.landSoakImpact && vn > 0.3 && (bike.rearOnGround || bike.frontOnGround)) {
-      [bike.chassis, bike.rider, bike.rear.wheel, bike.front.wheel].forEach(function (body) {
+    if (bike.landImpact < CONFIG.landSoakImpact) return; // a gentle landing needs no help at all
+    // Shocks absorb the landing (owner request: no bounce): after a hard landing, any speed AWAY
+    // from the ground is mostly soaked up (the sprung weight only: the wheels stay free).
+    if (vn > 0.5 && (bike.rearOnGround || bike.frontOnGround)) {
+      [bike.chassis, bike.rider].forEach(function (body) {
         var bv = body.getLinearVelocity(), away = bv.x * nx + bv.y * ny;
         if (away > 0) body.setLinearVelocity(Vec2(bv.x - nx * away * CONFIG.landSoak, bv.y - ny * away * CONFIG.landSoak));
       });
     }
-    var a = bike.chassis.getAngle(), err = a - bike.groundAngle;
+    // Landing assist: ease the bike level with the ground under it so a hard landing on one
+    // wheel does not tip it over its nose. Not used if the bike is nearly upside down (a real crash).
+    var err = bike.chassis.getAngle() - bike.groundAngle;
     err = Math.atan2(Math.sin(err), Math.cos(err));
-    if (Math.abs(err) > 1.8) return;
-    var T = -(CONFIG.landingAssist * 4500) * err - 450 * bike.chassis.getAngularVelocity();
-    bike.chassis.applyTorque(Math.max(-6000, Math.min(6000, T)), true);
+    if (Math.abs(err) > 1.8 || Math.abs(err) < 0.12) return;
+    var T = -(CONFIG.landingAssist * 3000) * err - 300 * bike.chassis.getAngularVelocity();
+    bike.chassis.applyTorque(Math.max(-4000, Math.min(4000, T)), true);
   }
 
   function updateContacts(bike) {
