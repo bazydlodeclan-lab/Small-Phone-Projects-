@@ -635,10 +635,21 @@ var Bike = (function () {
     if (!bike.hips || !CONFIG.landingAssist) return;
     var air = bike.rearAir >= CONTACT_GRACE_STEPS && bike.frontAir >= CONTACT_GRACE_STEPS;
     if (air) { bike.airSteps = (bike.airSteps || 0) + 1; return; }
-    if ((bike.airSteps || 0) > 6) bike.landSteps = 36; // just landed after a real jump
+    if ((bike.airSteps || 0) > 6) { bike.landSteps = 36; bike.landImpact = 0; } // just landed after a real jump
     bike.airSteps = 0;
     if (!(bike.landSteps > 0)) return;
     bike.landSteps--;
+    // Shocks absorb the landing (owner request: no bounce): after a hard landing, any speed AWAY
+    // from the ground is mostly soaked up, instead of the bike springing back into the air.
+    var ga0 = bike.groundAngle || 0, nx = Math.sin(ga0), ny = -Math.cos(ga0);
+    var cv = bike.chassis.getLinearVelocity(), vn = cv.x * nx + cv.y * ny;
+    if (-vn > bike.landImpact) bike.landImpact = -vn;
+    if (bike.landImpact > CONFIG.landSoakImpact && vn > 0.3 && (bike.rearOnGround || bike.frontOnGround)) {
+      [bike.chassis, bike.rider, bike.rear.wheel, bike.front.wheel].forEach(function (body) {
+        var bv = body.getLinearVelocity(), away = bv.x * nx + bv.y * ny;
+        if (away > 0) body.setLinearVelocity(Vec2(bv.x - nx * away * CONFIG.landSoak, bv.y - ny * away * CONFIG.landSoak));
+      });
+    }
     var a = bike.chassis.getAngle(), err = a - bike.groundAngle;
     err = Math.atan2(Math.sin(err), Math.cos(err));
     if (Math.abs(err) > 1.8) return;

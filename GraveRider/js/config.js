@@ -70,6 +70,8 @@ var CONFIG = {
   // flipAssist adds a little extra turning IN THE AIR ONLY so flips are
   // possible in a game. flipAssist = 0 is fully realistic.
   landingAssist: 1,          // 1 = after a landing the bike is eased level with the slope (0 = off, real life) [GAME CHOICE]
+  landSoak: 0.6,             // share of the speed away from the ground that is soaked up each step after a hard landing (0 = off, bouncy) [GAME CHOICE]
+  landSoakImpact: 3,         // m/s into the ground that counts as a hard landing for that [GAME CHOICE]
   flipAssist: 250,           // slider: extra turning force in the air (N·m); 0 = real life
   maxSpinSpeed: 4,           // assist stops adding spin above this (radians/sec; one backflip needs about 3)
   // A real rider can move their weight about 0.17 m forward (chest over the
