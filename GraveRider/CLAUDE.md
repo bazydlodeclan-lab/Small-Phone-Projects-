@@ -37,6 +37,13 @@ The finished game has 4 levels, played in this order:
   TWO freestyle ramps (middle + finale), 3 pumpkin patches (level 2), 3 loops (level 4), ~6-8 big jumps with 45-55 degree steep landings,
   tracks end at most ~230 m lower than they start. Also fixed: the ground fill used a fixed world height (5000 px) as its bottom edge, so
   on deep tracks the ground and sky swapped places (now `piece.fillEdge`, relative to the piece).
+  Owner request 2026-10-28 (after playing): physics got worse, glitching/bottoming out on flat ground, features too
+  long with nothing between -> levels rebuilt DENSE and COMPACT (a feature every 40-100 m, about 50 features, 3800-4300 m);
+  `L.steep` is now compact (~50 m, loses ~17 m of height). Landing helpers in `Bike.landing` are gated so they cannot
+  disturb normal riding: they only act after a real jump (0.5 s+ in the air); the bounce soak only after a hard landing
+  (5 m/s+ into the ground), and acts on the chassis/rider only. An ungated version pushed the bike into the suspension on every
+  bump (rear compression 100% vs 72% without) - always compare against `landingAssist = 0` on a whoops track before changing
+  these. Anti-endo: nose pitched more than ~20 degrees below the ground with a wheel down gets a gentle torque back.
   Owner request 2026-10-23: BIG jumps (lip about 90 px / 1.4 m or more, and the freestyle ramps)
   land on STEEP downhills, 45-70 degrees (`L.steep(deg)` in the builder; owner follow-ups 2026-10-24/26: it must be where you
   ACTUALLY land and round out gradually, not a straight wall. Physics fact: the steeper the ground falls
