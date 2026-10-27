@@ -644,10 +644,9 @@ var Bike = (function () {
     var ga0 = bike.groundAngle || 0, nx = Math.sin(ga0), ny = -Math.cos(ga0);
     var cv = bike.chassis.getLinearVelocity(), vn = cv.x * nx + cv.y * ny;
     if (-vn > bike.landImpact) bike.landImpact = -vn;
-    if (bike.landImpact < CONFIG.landSoakImpact) return; // a gentle landing needs no help at all
-    // Shocks absorb the landing (owner request: no bounce): after a hard landing, any speed AWAY
+    // Shocks absorb the landing (owner request: no bounce): after a HARD landing, any speed AWAY
     // from the ground is mostly soaked up (the sprung weight only: the wheels stay free).
-    if (vn > 0.5 && (bike.rearOnGround || bike.frontOnGround)) {
+    if (bike.landImpact >= CONFIG.landSoakImpact && vn > 0.5 && (bike.rearOnGround || bike.frontOnGround)) {
       [bike.chassis, bike.rider].forEach(function (body) {
         var bv = body.getLinearVelocity(), away = bv.x * nx + bv.y * ny;
         if (away > 0) body.setLinearVelocity(Vec2(bv.x - nx * away * CONFIG.landSoak, bv.y - ny * away * CONFIG.landSoak));
