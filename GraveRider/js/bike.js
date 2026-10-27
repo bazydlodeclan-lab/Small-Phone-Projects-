@@ -635,7 +635,7 @@ var Bike = (function () {
     if (!bike.hips || !CONFIG.landingAssist) return;
     var air = bike.rearAir >= CONTACT_GRACE_STEPS && bike.frontAir >= CONTACT_GRACE_STEPS;
     if (air) { bike.airSteps = (bike.airSteps || 0) + 1; return; }
-    if ((bike.airSteps || 0) > 6) { bike.landSteps = 36; bike.landImpact = 0; } // just landed after a real jump
+    if ((bike.airSteps || 0) > 6) { bike.landSteps = 50; bike.landImpact = 0; } // just landed after a real jump
     bike.airSteps = 0;
     if (!(bike.landSteps > 0)) return;
     bike.landSteps--;
